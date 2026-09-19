@@ -4,11 +4,10 @@ import {
   AlertTriangle,
   CheckCircle,
   Clock,
-  UserMinus,
-  RefreshCw,
   Search,
   ShieldAlert,
   X,
+  CheckCircle2,
 } from "lucide-react";
 import type {
   ResourceAllocation,
@@ -47,7 +46,9 @@ export const AllocationsView: React.FC<AllocationsViewProps> = ({
   const [isReleasing, setIsReleasing] = useState(false);
 
   // Active allocations
-  const activeAllocations = allocations.filter((a) => a.status === "ACTIVE" || a.status === "FLAGGED_REVIEW");
+  const activeAllocations = allocations.filter(
+    (a) => a.status === "ACTIVE" || a.status === "FLAGGED_REVIEW"
+  );
 
   // Identify Conflicts & Flagged Allocations
   const flaggedAllocations = allocations.filter((a) => {
@@ -100,20 +101,24 @@ export const AllocationsView: React.FC<AllocationsViewProps> = ({
   return (
     <div className="space-y-6 pb-12">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E2E8F0] pb-4">
         <div>
-          <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-            <Layers className="w-5 h-5 text-purple-400" />
-            <span>Resource Allocations & Conflict Governance</span>
-          </h2>
-          <p className="text-xs text-slate-400">
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-bold text-[#243447] tracking-tight font-heading">
+              Resource Allocations & Utilization
+            </h1>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-[#EAF4FF] text-[#1976D2]">
+              {activeAllocations.length} Active Assignments
+            </span>
+          </div>
+          <p className="text-xs text-[#64748B] mt-0.5">
             Audit trail of active clinical assignments, conflict alarms, and discharge releases.
           </p>
         </div>
 
         <button
           onClick={() => onNavigate("queue")}
-          className="px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md transition"
+          className="px-4 py-2 rounded-lg bg-[#1976D2] hover:bg-[#1565C0] text-white text-xs font-semibold shadow-xs transition"
         >
           View Priority Queue
         </button>
@@ -121,43 +126,47 @@ export const AllocationsView: React.FC<AllocationsViewProps> = ({
 
       {/* Conflict & Efficiency Alert Panels */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Flagged / Maintenance Conflicts */}
+        {/* Conflict Detection */}
         <div
-          className={`p-4 rounded-xl border text-xs space-y-2 ${
-            flaggedAllocations.length > 0
-              ? "bg-red-950/40 border-red-800/80 text-red-200"
-              : "bg-slate-900 border-slate-800 text-slate-400"
+          className={`medical-card p-4 text-xs space-y-2 ${
+            flaggedAllocations.length > 0 ? "border-red-200 bg-red-50/50" : ""
           }`}
         >
           <div className="flex items-center justify-between font-bold">
             <div className="flex items-center gap-2">
-              <ShieldAlert className="w-4 h-4 text-red-400" />
-              <span>Resource Conflict Detection ({flaggedAllocations.length})</span>
+              <ShieldAlert
+                className={`w-4 h-4 ${
+                  flaggedAllocations.length > 0 ? "text-red-600" : "text-[#0F9D8A]"
+                }`}
+              />
+              <span className="text-[#243447]">
+                Resource Conflict Detection ({flaggedAllocations.length})
+              </span>
             </div>
             {flaggedAllocations.length > 0 && (
-              <span className="text-[10px] px-2 py-0.5 rounded bg-red-900 text-red-100 font-mono">
+              <span className="text-[10px] px-2 py-0.5 rounded bg-red-600 text-white font-semibold">
                 ACTION REQUIRED
               </span>
             )}
           </div>
 
           {flaggedAllocations.length === 0 ? (
-            <p className="text-slate-400 text-xs">
-              Zero active resource conflicts. All allocated physical assets and staff are within valid operating constraints.
+            <p className="text-[#64748B] text-xs">
+              Zero active resource conflicts. All allocated assets and staff are operating within normal parameters.
             </p>
           ) : (
             <div className="space-y-2 pt-1">
               {flaggedAllocations.map((alloc) => (
                 <div
                   key={alloc.id}
-                  className="p-2.5 rounded-lg bg-slate-950 border border-red-900/60 text-[11px] flex items-center justify-between"
+                  className="p-2.5 rounded-lg bg-white border border-red-200 text-[11px] flex items-center justify-between"
                 >
                   <div>
-                    <div className="font-semibold text-red-200">
+                    <div className="font-semibold text-red-800">
                       {alloc.resourceName} ({alloc.resourceNumber}) is offline/in maintenance
                     </div>
-                    <div className="text-slate-400">
-                      Patient: <span className="text-slate-200">{alloc.patientName}</span> • Requires reassessment.
+                    <div className="text-[#64748B]">
+                      Patient: <strong className="text-[#243447]">{alloc.patientName}</strong> • Requires reassessment.
                     </div>
                   </div>
                   <button
@@ -165,7 +174,7 @@ export const AllocationsView: React.FC<AllocationsViewProps> = ({
                       setReleasingAllocation(alloc);
                       setReleaseReason("Releasing due to resource maintenance/failure.");
                     }}
-                    className="px-2.5 py-1 rounded bg-red-900 hover:bg-red-800 text-red-100 text-xs font-semibold"
+                    className="px-2.5 py-1 rounded bg-red-600 hover:bg-red-700 text-white text-xs font-semibold"
                   >
                     Resolve
                   </button>
@@ -176,18 +185,18 @@ export const AllocationsView: React.FC<AllocationsViewProps> = ({
         </div>
 
         {/* Resource Efficiency Review */}
-        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 text-xs space-y-2">
-          <div className="flex items-center justify-between font-bold text-slate-200">
+        <div className="medical-card p-4 text-xs space-y-2">
+          <div className="flex items-center justify-between font-bold text-[#243447]">
             <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-amber-400" />
-              <span>Resource Efficiency Review ({prolongedAllocations.length})</span>
+              <Clock className="w-4 h-4 text-[#F59E0B]" />
+              <span>Resource Duration Review ({prolongedAllocations.length})</span>
             </div>
-            <span className="text-[10px] text-slate-400">Target &gt; 60 min</span>
+            <span className="text-[10px] text-[#64748B]">Target: &gt; 60 min</span>
           </div>
 
           {prolongedAllocations.length === 0 ? (
-            <p className="text-slate-400 text-xs">
-              All active allocations are within standard initial duration thresholds.
+            <p className="text-[#64748B] text-xs">
+              All active allocations are within standard initial duration expectations.
             </p>
           ) : (
             <div className="space-y-1.5 pt-1 max-h-36 overflow-y-auto pr-1">
@@ -198,18 +207,18 @@ export const AllocationsView: React.FC<AllocationsViewProps> = ({
                 return (
                   <div
                     key={alloc.id}
-                    className="p-2 rounded-lg bg-slate-950 border border-slate-800 text-[11px] flex items-center justify-between"
+                    className="p-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] text-[11px] flex items-center justify-between"
                   >
                     <div>
-                      <span className="font-semibold text-slate-200">{alloc.patientName}</span> in{" "}
-                      <span className="text-blue-300">{alloc.resourceName}</span> ({elapsed} min active)
+                      <strong className="text-[#243447]">{alloc.patientName}</strong> in{" "}
+                      <span className="text-[#1976D2]">{alloc.resourceName}</span> ({elapsed} min active)
                     </div>
                     <button
                       onClick={() => {
                         setReleasingAllocation(alloc);
                         setReleaseReason("Routine clinical discharge / transfer after procedure.");
                       }}
-                      className="text-[11px] font-semibold text-amber-400 hover:text-amber-300"
+                      className="text-[11px] font-semibold text-[#1976D2] hover:underline"
                     >
                       Review allocation
                     </button>
@@ -222,25 +231,28 @@ export const AllocationsView: React.FC<AllocationsViewProps> = ({
       </div>
 
       {/* Main Allocations Table */}
-      <div className="p-5 rounded-xl bg-slate-900 border border-slate-800 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+      <div className="medical-card overflow-hidden">
+        <div className="p-4 border-b border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h3 className="text-sm font-bold text-white">Live Allocations Directory</h3>
-            <p className="text-xs text-slate-400">Total recorded allocation events: {allocations.length}</p>
+            <h2 className="text-sm font-bold text-[#243447]">Live Allocations Directory</h2>
+            <p className="text-xs text-[#64748B]">Total recorded allocation events: {allocations.length}</p>
           </div>
 
           <div className="flex items-center gap-2">
-            <input
-              type="text"
-              placeholder="Search patient, resource..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 text-xs w-56"
-            />
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-[#94A3B8] absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search patient, resource..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8 pr-3 py-1.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] text-xs text-[#243447] focus:outline-none focus:border-[#1976D2] w-52"
+              />
+            </div>
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 text-xs"
+              className="px-2.5 py-1.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] text-xs text-[#243447]"
             >
               <option value="ACTIVE">Active Allocations</option>
               <option value="FLAGGED_REVIEW">Flagged for Review</option>
@@ -250,168 +262,155 @@ export const AllocationsView: React.FC<AllocationsViewProps> = ({
           </div>
         </div>
 
-        {allocations.length === 0 ? (
-          <div className="py-16 text-center text-xs text-slate-400 space-y-2">
-            <Layers className="w-8 h-8 text-slate-400 mx-auto" />
-            <p className="font-semibold text-slate-300">No allocations on record yet</p>
-            <p className="text-slate-400">
-              Assign resources to waiting patients in the Priority Queue to establish active clinical allocations.
-            </p>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="py-8 text-center text-xs text-slate-400">
-            No allocation records match your filter criteria.
+        {filtered.length === 0 ? (
+          <div className="p-12 text-center text-xs text-[#64748B]">
+            No allocations found matching the selected filter.
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-300">
-              <thead className="bg-slate-950 text-slate-400 uppercase font-semibold text-[11px] border-b border-slate-800">
-                <tr>
-                  <th className="px-3 py-2.5">Patient</th>
-                  <th className="px-3 py-2.5">Resource</th>
-                  <th className="px-3 py-2.5">Type</th>
-                  <th className="px-3 py-2.5">Assigned Time</th>
-                  <th className="px-3 py-2.5">Allocated By</th>
-                  <th className="px-3 py-2.5">Reason</th>
-                  <th className="px-3 py-2.5">Status</th>
-                  <th className="px-3 py-2.5 text-right">Actions</th>
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="bg-[#F8FAFC] text-[#64748B] text-[11px] uppercase font-semibold border-b border-[#E2E8F0]">
+                  <th className="px-4 py-3">Patient</th>
+                  <th className="px-4 py-3">Allocated Resource</th>
+                  <th className="px-4 py-3">Assigned By</th>
+                  <th className="px-4 py-3">Start Time</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800">
-                {filtered.map((alloc) => (
-                  <tr key={alloc.id} className="hover:bg-slate-850/50 transition">
-                    <td className="px-3 py-3">
-                      <div className="font-semibold text-slate-100">{alloc.patientName}</div>
-                      <div className="text-[10px] text-slate-400">
-                        Priority: {alloc.priorityAtAllocation} pts ({alloc.patientUrgency})
-                      </div>
-                    </td>
+              <tbody className="divide-y divide-[#E2E8F0]">
+                {filtered.map((alloc) => {
+                  const isActive = alloc.status === "ACTIVE";
+                  return (
+                    <tr key={alloc.id} className="hover:bg-[#F8FAFC] transition">
+                      <td className="px-4 py-3 font-semibold text-[#243447]">
+                        {alloc.patientName}
+                      </td>
 
-                    <td className="px-3 py-3">
-                      <div className="font-semibold text-blue-300">{alloc.resourceName}</div>
-                      <div className="font-mono text-[10px] text-slate-400">{alloc.resourceNumber}</div>
-                    </td>
+                      <td className="px-4 py-3">
+                        <div className="font-semibold text-[#1976D2]">
+                          {alloc.resourceName}
+                        </div>
+                        <div className="text-[10px] text-[#64748B] font-mono">
+                          {alloc.resourceNumber}
+                        </div>
+                      </td>
 
-                    <td className="px-3 py-3 text-slate-400 font-mono text-[11px]">
-                      {alloc.resourceType}
-                    </td>
+                      <td className="px-4 py-3 text-[#64748B]">
+                        {alloc.allocatedBy}
+                      </td>
 
-                    <td className="px-3 py-3 text-slate-300 font-mono">
-                      {new Date(alloc.startTime).toLocaleTimeString()}
-                    </td>
+                      <td className="px-4 py-3 font-mono text-[#64748B]">
+                        {new Date(alloc.startTime).toLocaleTimeString()}
+                      </td>
 
-                    <td className="px-3 py-3 text-slate-300">{alloc.allocatedBy}</td>
-
-                    <td className="px-3 py-3 text-slate-400 max-w-xs truncate" title={alloc.allocationReason}>
-                      {alloc.allocationReason}
-                    </td>
-
-                    <td className="px-3 py-3">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          alloc.status === "ACTIVE"
-                            ? "bg-blue-950 text-blue-300 border border-blue-800"
-                            : alloc.status === "FLAGGED_REVIEW"
-                            ? "bg-red-950 text-red-300 border border-red-800 animate-pulse"
-                            : "bg-slate-950 text-slate-400 border border-slate-800"
-                        }`}
-                      >
-                        {alloc.status}
-                      </span>
-                    </td>
-
-                    <td className="px-3 py-3 text-right">
-                      {alloc.status === "ACTIVE" || alloc.status === "FLAGGED_REVIEW" ? (
-                        <button
-                          onClick={() => {
-                            setReleasingAllocation(alloc);
-                            setReleaseReason("");
-                            setDischargePatient(false);
-                          }}
-                          className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
+                            isActive
+                              ? "bg-blue-50 text-blue-700 border border-blue-200"
+                              : alloc.status === "FLAGGED_REVIEW"
+                              ? "bg-amber-50 text-amber-700 border border-amber-200"
+                              : "bg-slate-100 text-slate-700 border border-slate-200"
+                          }`}
                         >
-                          Release Resource
-                        </button>
-                      ) : (
-                        <span className="text-[11px] text-slate-400 italic">Released</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                          {alloc.status}
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-3 text-right">
+                        {isActive && (
+                          <button
+                            onClick={() => {
+                              setReleasingAllocation(alloc);
+                              setReleaseReason("");
+                              setDischargePatient(false);
+                            }}
+                            className="px-2.5 py-1 rounded bg-white border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#243447] text-[11px] font-semibold transition"
+                          >
+                            Release
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
 
-      {/* Release Resource Modal */}
+      {/* Release Modal */}
       {releasingAllocation && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-2xs flex items-center justify-center p-4">
           <form
             onSubmit={handleConfirmRelease}
-            className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-5 shadow-2xl space-y-4"
+            className="bg-white border border-[#E2E8F0] rounded-xl max-w-md w-full p-5 shadow-xl space-y-4"
           >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-sm font-bold text-white">
-                Release Resource: {releasingAllocation.resourceName}
-              </h3>
+            <div className="flex items-center justify-between pb-3 border-b border-[#E2E8F0]">
+              <h3 className="text-sm font-bold text-[#243447]">Release Allocated Resource</h3>
               <button
                 type="button"
                 onClick={() => setReleasingAllocation(null)}
-                className="p-1 text-slate-400 hover:text-slate-200 rounded"
+                className="p-1 text-[#64748B] hover:text-[#243447] rounded"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-3 text-xs">
-              <p className="text-slate-300 leading-relaxed">
-                You are releasing <span className="font-semibold text-white">{releasingAllocation.resourceName}</span> ({releasingAllocation.resourceNumber}) from patient{" "}
-                <span className="font-semibold text-white">{releasingAllocation.patientName}</span>.
-              </p>
+              <div className="p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] space-y-1">
+                <div>
+                  <span className="text-[#64748B]">Patient:</span>{" "}
+                  <strong className="text-[#243447]">{releasingAllocation.patientName}</strong>
+                </div>
+                <div>
+                  <span className="text-[#64748B]">Resource:</span>{" "}
+                  <strong className="text-[#1976D2]">
+                    {releasingAllocation.resourceName} ({releasingAllocation.resourceNumber})
+                  </strong>
+                </div>
+              </div>
 
               <div>
-                <label className="block font-semibold text-slate-300 mb-1">
-                  Reason for Release / Clinical Disposition *
-                </label>
-                <textarea
-                  rows={2}
+                <label className="block font-semibold text-[#243447] mb-1">Release Reason / Discharge Notes</label>
+                <input
+                  type="text"
                   required
-                  placeholder="e.g. Procedure complete, patient stable, transferred to general ward."
+                  placeholder="e.g. Procedure complete, patient moved to recovery"
                   value={releaseReason}
                   onChange={(e) => setReleaseReason(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-hidden focus:border-blue-500"
+                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2 text-xs text-[#243447] focus:outline-none focus:border-[#1976D2]"
                 />
               </div>
 
-              <div className="flex items-center gap-2 pt-1">
+              <label className="flex items-center gap-2 font-medium text-[#243447] pt-1">
                 <input
                   type="checkbox"
-                  id="discharge-patient-checkbox"
                   checked={dischargePatient}
                   onChange={(e) => setDischargePatient(e.target.checked)}
-                  className="w-4 h-4 rounded bg-slate-950 border-slate-800 text-blue-600 focus:ring-blue-500"
+                  className="rounded text-[#1976D2] border-[#E2E8F0]"
                 />
-                <label htmlFor="discharge-patient-checkbox" className="text-xs text-slate-300 cursor-pointer font-medium">
-                  Fully discharge patient from hospital (sets status to DISCHARGED)
-                </label>
-              </div>
+                <span>Also mark patient as discharged from hospital</span>
+              </label>
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#E2E8F0]">
               <button
                 type="button"
                 onClick={() => setReleasingAllocation(null)}
-                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
+                className="px-4 py-2 rounded-lg bg-white border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#243447] text-xs font-semibold"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={isReleasing}
-                className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md transition disabled:opacity-50"
+                className="px-4 py-2 rounded-lg bg-[#1976D2] hover:bg-[#1565C0] text-white text-xs font-semibold shadow-xs disabled:opacity-50"
               >
-                {isReleasing ? "Releasing..." : "Confirm & Release"}
+                {isReleasing ? "Releasing..." : "Confirm Release"}
               </button>
             </div>
           </form>

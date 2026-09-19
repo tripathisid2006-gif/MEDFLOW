@@ -3,17 +3,15 @@ import {
   Server,
   Plus,
   Wrench,
-  CheckCircle,
-  AlertOctagon,
   Bed,
   HeartPulse,
   Syringe,
-  Stethoscope,
-  Activity,
+  Users,
   Ambulance as AmbulanceIcon,
   ShieldCheck,
   X,
-  Building2,
+  Search,
+  CheckCircle2,
 } from "lucide-react";
 import type {
   Resource,
@@ -33,53 +31,6 @@ interface ResourcesViewProps {
   onInitUnits: () => void;
 }
 
-const TYPE_ICONS: Record<string, any> = {
-  BED: Bed,
-  ICU_BED: HeartPulse,
-  OPERATING_ROOM: Syringe,
-  DOCTOR: Stethoscope,
-  NURSE: Activity,
-  AMBULANCE: AmbulanceIcon,
-  VENTILATOR: Server,
-  EQUIPMENT: Server,
-};
-
-const STATUS_BADGES: Record<
-  ResourceState,
-  { label: string; bg: string; text: string; border: string }
-> = {
-  AVAILABLE: {
-    label: "AVAILABLE",
-    bg: "bg-emerald-950/80",
-    text: "text-emerald-300",
-    border: "border-emerald-800",
-  },
-  IN_USE: {
-    label: "IN USE",
-    bg: "bg-blue-950/80",
-    text: "text-blue-300",
-    border: "border-blue-800",
-  },
-  RESERVED: {
-    label: "RESERVED",
-    bg: "bg-purple-950/80",
-    text: "text-purple-300",
-    border: "border-purple-800",
-  },
-  MAINTENANCE: {
-    label: "MAINTENANCE",
-    bg: "bg-amber-950/80",
-    text: "text-amber-300",
-    border: "border-amber-800",
-  },
-  UNAVAILABLE: {
-    label: "UNAVAILABLE",
-    bg: "bg-red-950/80",
-    text: "text-red-300",
-    border: "border-red-800",
-  },
-};
-
 export const ResourcesView: React.FC<ResourcesViewProps> = ({
   resources,
   departments,
@@ -88,7 +39,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
   onRefresh,
   onInitUnits,
 }) => {
-  const [activeTypeFilter, setActiveTypeFilter] = useState<string>("ALL");
+  const [activeCategory, setActiveCategory] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   // Add Resource Modal State
@@ -107,17 +58,87 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
   const [maintenanceReason, setMaintenanceReason] = useState("");
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
-  // Filtered resources
-  const filtered = resources.filter((res) => {
-    const matchesType = activeTypeFilter === "ALL" || res.type === activeTypeFilter;
+  // Requirement 17: Clean Categories with Dynamic Calculations
+  // Beds, ICU, Operating Rooms, Staff, Ambulances, Equipment
+  const categories = [
+    {
+      id: "BED",
+      label: "Beds",
+      icon: Bed,
+      types: ["BED"],
+    },
+    {
+      id: "ICU",
+      label: "ICU",
+      icon: HeartPulse,
+      types: ["ICU_BED"],
+    },
+    {
+      id: "OR",
+      label: "Operating Rooms",
+      icon: Syringe,
+      types: ["OPERATING_ROOM"],
+    },
+    {
+      id: "STAFF",
+      label: "Staff",
+      icon: Users,
+      types: ["DOCTOR", "NURSE"],
+    },
+    {
+      id: "AMBULANCES",
+      label: "Ambulances",
+      icon: AmbulanceIcon,
+      types: ["AMBULANCE"],
+    },
+    {
+      id: "EQUIPMENT",
+      label: "Equipment",
+      icon: Server,
+      types: ["VENTILATOR", "EQUIPMENT"],
+    },
+  ];
+
+  // Helper to calculate statistics for a given set of types
+  const getCategoryStats = (types: string[]) => {
+    const list = resources.filter((r) => types.includes(r.type));
+    const total = list.length;
+    const inUse = list.filter((r) => r.status === "IN_USE").length;
+    const available = list.filter((r) => r.status === "AVAILABLE").length;
+    const reserved = list.filter((r) => r.status === "RESERVED").length;
+    const maintenance = list.filter((r) => r.status === "MAINTENANCE" || r.status === "UNAVAILABLE").length;
+    const utilizationPct = total > 0 ? Math.round((inUse / total) * 100) : 0;
+
+    return {
+      total,
+      inUse,
+      available,
+      reserved,
+      maintenance,
+      utilizationPct,
+    };
+  };
+
+  // Filtered resources list
+  const filteredResources = resources.filter((res) => {
+    let matchesCategory = true;
+    if (activeCategory !== "ALL") {
+      const selectedCat = categories.find((c) => c.id === activeCategory);
+      if (selectedCat) {
+        matchesCategory = selectedCat.types.includes(res.type);
+      }
+    }
+
     const matchesSearch =
       res.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       res.resourceNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (res.departmentName && res.departmentName.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (res.assignedPatientName && res.assignedPatientName.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesType && matchesSearch;
+
+    return matchesCategory && matchesSearch;
   });
 
-  // Handle Add Resource
+  // Add Resource Handler
   const handleAddResource = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newNumber.trim() || !newName.trim()) return;
@@ -146,7 +167,7 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
     }
   };
 
-  // Handle Status Update / Maintenance Toggle
+  // Update Status Handler
   const handleUpdateStatus = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingResource) return;
@@ -156,8 +177,12 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
         editingResource.id,
         {
           status: editStatus,
-          maintenanceReason: editStatus === "MAINTENANCE" || editStatus === "UNAVAILABLE" ? maintenanceReason : undefined,
-          lastMaintainedAt: editStatus === "AVAILABLE" ? new Date().toISOString() : editingResource.lastMaintainedAt,
+          maintenanceReason:
+            editStatus === "MAINTENANCE" || editStatus === "UNAVAILABLE"
+              ? maintenanceReason
+              : undefined,
+          lastMaintainedAt:
+            editStatus === "AVAILABLE" ? new Date().toISOString() : editingResource.lastMaintainedAt,
         },
         `${currentUserName} (${currentRole})`
       );
@@ -170,28 +195,21 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
     }
   };
 
-  const typeTabs = [
-    { id: "ALL", label: "All Units" },
-    { id: "BED", label: "General Beds" },
-    { id: "ICU_BED", label: "ICU Beds" },
-    { id: "OPERATING_ROOM", label: "Operating Rooms" },
-    { id: "DOCTOR", label: "Physicians" },
-    { id: "NURSE", label: "Nurses" },
-    { id: "AMBULANCE", label: "Ambulances" },
-    { id: "VENTILATOR", label: "Ventilators" },
-  ];
-
   return (
     <div className="space-y-6 pb-12">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E2E8F0] pb-4">
         <div>
-          <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-            <Server className="w-5 h-5 text-blue-400" />
-            <span>Hospital Resource Inventory</span>
-          </h2>
-          <p className="text-xs text-slate-400">
-            Real-time physical asset tracking, occupancy status, and maintenance governance.
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-bold text-[#243447] tracking-tight font-heading">
+              Hospital Resources
+            </h1>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-[#EAF4FF] text-[#1976D2]">
+              {resources.length} Total Units
+            </span>
+          </div>
+          <p className="text-xs text-[#64748B] mt-0.5">
+            Operational capacity, bed management, clinical equipment, and staff availability.
           </p>
         </div>
 
@@ -199,16 +217,16 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
           {resources.length === 0 && (
             <button
               onClick={onInitUnits}
-              className="px-3.5 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold shadow-sm flex items-center gap-2 transition"
+              className="px-3.5 py-2 rounded-lg bg-[#0F9D8A] hover:bg-[#0c8575] text-white text-xs font-semibold shadow-xs flex items-center gap-2 transition"
             >
               <ShieldCheck className="w-4 h-4" />
-              <span>Initialize Hospital Units</span>
+              <span>Initialize Standard Units</span>
             </button>
           )}
 
           <button
             onClick={() => setShowAddModal(true)}
-            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md flex items-center gap-2 transition"
+            className="px-4 py-2 rounded-lg bg-[#1976D2] hover:bg-[#1565C0] text-white text-xs font-semibold shadow-xs flex items-center gap-2 transition"
           >
             <Plus className="w-4 h-4" />
             <span>Add Resource</span>
@@ -216,151 +234,229 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
         </div>
       </div>
 
-      {/* Filter Tabs & Search */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {typeTabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTypeFilter(tab.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                activeTypeFilter === tab.id
-                  ? "bg-blue-600 text-white font-semibold shadow-xs"
-                  : "bg-slate-900 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800"
+      {/* ==================================================
+          Requirement 17: CATEGORY CARDS WITH PROGRESS INDICATORS
+          Beds | ICU | Operating Rooms | Staff | Ambulances | Equipment
+          ================================================== */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {categories.map((cat) => {
+          const stats = getCategoryStats(cat.types);
+          const Icon = cat.icon;
+          const isSelected = activeCategory === cat.id;
+
+          return (
+            <div
+              key={cat.id}
+              onClick={() => setActiveCategory(activeCategory === cat.id ? "ALL" : cat.id)}
+              className={`medical-card p-4.5 cursor-pointer transition flex flex-col justify-between ${
+                isSelected
+                  ? "border-[#1976D2] ring-1 ring-[#1976D2] bg-[#F7FAFC]"
+                  : "hover:border-[#CBD5E1]"
               }`}
             >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        <input
-          type="text"
-          placeholder="Filter by ID, name, patient..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 text-xs w-60"
-        />
-      </div>
-
-      {/* Empty State */}
-      {resources.length === 0 ? (
-        <div className="p-12 text-center text-xs text-slate-400 bg-slate-900 border border-slate-800 rounded-xl space-y-4 max-w-xl mx-auto">
-          <Server className="w-10 h-10 text-slate-400 mx-auto" />
-          <div>
-            <h3 className="text-sm font-bold text-slate-200">No resources configured</h3>
-            <p className="mt-1 text-slate-400">
-              Add hospital resources manually or initialize standard physical units to begin deterministic scheduling.
-            </p>
-          </div>
-          <div className="pt-2 flex items-center justify-center gap-3">
-            <button
-              onClick={onInitUnits}
-              className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md transition"
-            >
-              Initialize Hospital Units
-            </button>
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition"
-            >
-              Add Single Resource
-            </button>
-          </div>
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="py-12 text-center text-xs text-slate-400">
-          No resources found matching the specified filter.
-        </div>
-      ) : (
-        /* Resource Cards Grid */
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
-          {filtered.map((res) => {
-            const Icon = TYPE_ICONS[res.type] || Server;
-            const badge = STATUS_BADGES[res.status] || STATUS_BADGES.AVAILABLE;
-            return (
-              <div
-                key={res.id}
-                className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-col justify-between hover:border-slate-700 transition space-y-3"
-              >
-                <div>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="p-2 rounded-lg bg-slate-950 border border-slate-800 text-blue-400">
-                        <Icon className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="font-semibold text-xs text-slate-100">{res.name}</div>
-                        <div className="font-mono text-[11px] text-blue-400">{res.resourceNumber}</div>
-                      </div>
+              <div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-[#EAF4FF] text-[#1976D2] flex items-center justify-center">
+                      <Icon className="w-4 h-4" />
                     </div>
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badge.bg} ${badge.text} ${badge.border}`}
-                    >
-                      {badge.label}
-                    </span>
+                    <h2 className="text-sm font-bold text-[#243447]">{cat.label}</h2>
                   </div>
-
-                  <div className="mt-3 space-y-1 text-xs text-slate-400">
-                    <div className="flex items-center justify-between">
-                      <span>Department:</span>
-                      <span className="text-slate-300 font-medium">{res.departmentName || "Hospital Core"}</span>
-                    </div>
-
-                    {res.location && (
-                      <div className="flex items-center justify-between">
-                        <span>Location:</span>
-                        <span className="text-slate-300">{res.location}</span>
-                      </div>
-                    )}
-
-                    {res.status === "IN_USE" && (
-                      <div className="mt-2 p-2 rounded bg-blue-950/40 border border-blue-900/50 text-[11px] text-blue-200">
-                        Assigned to: <span className="font-semibold">{res.assignedPatientName || "Active Case"}</span>
-                      </div>
-                    )}
-
-                    {res.status === "MAINTENANCE" && res.maintenanceReason && (
-                      <div className="mt-2 p-2 rounded bg-amber-950/40 border border-amber-900/50 text-[11px] text-amber-200">
-                        Maintenance: {res.maintenanceReason}
-                      </div>
-                    )}
-                  </div>
+                  <span className="text-xs font-mono font-bold text-[#1976D2]">
+                    {stats.available} available
+                  </span>
                 </div>
 
-                <div className="pt-2 border-t border-slate-850 flex items-center justify-between">
-                  <span className="text-[10px] text-slate-400 font-mono">Cap: {res.capacity}</span>
-                  <button
-                    onClick={() => {
-                      setEditingResource(res);
-                      setEditStatus(res.status);
-                      setMaintenanceReason(res.maintenanceReason || "");
-                    }}
-                    className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition"
-                  >
-                    <Wrench className="w-3 h-3 text-slate-400" />
-                    <span>Status / Maintenance</span>
-                  </button>
+                {/* Occupancy & Utilization sentence */}
+                <div className="mt-3 text-xs text-[#243447] flex items-center justify-between font-medium">
+                  <span>
+                    <strong>{stats.inUse}</strong> / {stats.total} occupied
+                  </span>
+                  <span className="text-[#64748B] font-mono">{stats.utilizationPct}% utilization</span>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="w-full bg-[#E2E8F0] h-2 rounded-full overflow-hidden mt-1.5">
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 ${
+                      stats.utilizationPct > 85
+                        ? "bg-[#DC2626]"
+                        : stats.utilizationPct > 65
+                        ? "bg-[#F59E0B]"
+                        : "bg-[#1976D2]"
+                    }`}
+                    style={{ width: `${Math.min(stats.utilizationPct, 100)}%` }}
+                  />
                 </div>
               </div>
-            );
-          })}
+
+              {/* Status Breakdown Pills */}
+              <div className="grid grid-cols-4 gap-1 text-center pt-3 mt-3 border-t border-[#E2E8F0] text-[10px]">
+                <div className="bg-[#E8F7F4] text-[#0F9D8A] p-1 rounded font-semibold">
+                  <div>{stats.available}</div>
+                  <div className="text-[9px] font-normal">Available</div>
+                </div>
+                <div className="bg-[#EAF4FF] text-[#1976D2] p-1 rounded font-semibold">
+                  <div>{stats.inUse}</div>
+                  <div className="text-[9px] font-normal">In Use</div>
+                </div>
+                <div className="bg-[#F1F5F9] text-[#64748B] p-1 rounded font-semibold">
+                  <div>{stats.reserved}</div>
+                  <div className="text-[9px] font-normal">Reserved</div>
+                </div>
+                <div className="bg-[#FEF2F2] text-[#DC2626] p-1 rounded font-semibold">
+                  <div>{stats.maintenance}</div>
+                  <div className="text-[9px] font-normal">Maint.</div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Filter and Search Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setActiveCategory("ALL")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              activeCategory === "ALL"
+                ? "bg-[#1976D2] text-white shadow-xs"
+                : "bg-white text-[#64748B] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
+            }`}
+          >
+            All Resources ({resources.length})
+          </button>
+          {activeCategory !== "ALL" && (
+            <span className="text-xs text-[#64748B]">
+              Filtered by: <strong>{activeCategory}</strong>
+            </span>
+          )}
         </div>
-      )}
+
+        <div className="relative w-full sm:w-72">
+          <Search className="w-4 h-4 text-[#94A3B8] absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            placeholder="Search by ID, name, ward, patient..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-white border border-[#E2E8F0] rounded-lg pl-9 pr-3 py-1.5 text-xs text-[#243447] placeholder-[#94A3B8] focus:outline-none focus:border-[#1976D2]"
+          />
+        </div>
+      </div>
+
+      {/* Resources Table */}
+      <div className="medical-card overflow-hidden">
+        {filteredResources.length === 0 ? (
+          <div className="p-12 text-center text-xs text-[#64748B] space-y-2">
+            <Server className="w-8 h-8 text-[#94A3B8] mx-auto" />
+            <p className="font-semibold text-[#243447]">No resources found</p>
+            <p>No inventory matches your active filter or search criteria.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="bg-[#F8FAFC] text-[#64748B] text-[11px] uppercase font-semibold border-b border-[#E2E8F0]">
+                  <th className="px-4 py-3">ID / Code</th>
+                  <th className="px-4 py-3">Resource Name</th>
+                  <th className="px-4 py-3">Type</th>
+                  <th className="px-4 py-3">Department & Location</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Assigned Patient</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#E2E8F0]">
+                {filteredResources.map((res) => {
+                  const isAvailable = res.status === "AVAILABLE";
+                  const isInUse = res.status === "IN_USE";
+                  const isMaintenance = res.status === "MAINTENANCE" || res.status === "UNAVAILABLE";
+
+                  return (
+                    <tr key={res.id} className="hover:bg-[#F8FAFC] transition">
+                      <td className="px-4 py-3 font-mono font-bold text-[#1976D2]">
+                        {res.resourceNumber}
+                      </td>
+
+                      <td className="px-4 py-3 font-semibold text-[#243447]">
+                        {res.name}
+                      </td>
+
+                      <td className="px-4 py-3 text-[#64748B]">
+                        <span className="px-2 py-0.5 rounded bg-[#F1F5F9] text-[#475569] text-[11px] font-medium">
+                          {res.type.replace("_", " ")}
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-3 text-[#64748B]">
+                        <div>{res.departmentName || "General Facility"}</div>
+                        {res.location && (
+                          <div className="text-[10px] text-[#94A3B8]">{res.location}</div>
+                        )}
+                      </td>
+
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
+                            isAvailable
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              : isInUse
+                              ? "bg-blue-50 text-blue-700 border border-blue-200"
+                              : isMaintenance
+                              ? "bg-amber-50 text-amber-700 border border-amber-200"
+                              : "bg-slate-100 text-slate-700 border border-slate-200"
+                          }`}
+                        >
+                          {res.status}
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-3 text-[#243447]">
+                        {res.assignedPatientName ? (
+                          <span className="font-medium text-[#1976D2]">
+                            {res.assignedPatientName}
+                          </span>
+                        ) : (
+                          <span className="text-[#94A3B8] italic">None</span>
+                        )}
+                      </td>
+
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          onClick={() => {
+                            setEditingResource(res);
+                            setEditStatus(res.status);
+                            setMaintenanceReason(res.maintenanceReason || "");
+                          }}
+                          className="px-2.5 py-1 rounded bg-white border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#243447] text-[11px] font-semibold transition"
+                        >
+                          Manage Status
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {/* Add Resource Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-2xs flex items-center justify-center p-4">
           <form
             onSubmit={handleAddResource}
-            className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-5 shadow-2xl space-y-4"
+            className="bg-white border border-[#E2E8F0] rounded-xl max-w-md w-full p-5 shadow-xl space-y-4"
           >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-sm font-bold text-white">Add New Hospital Resource</h3>
+            <div className="flex items-center justify-between pb-3 border-b border-[#E2E8F0]">
+              <h3 className="text-sm font-bold text-[#243447]">Register Hospital Resource</h3>
               <button
                 type="button"
                 onClick={() => setShowAddModal(false)}
-                className="p-1 text-slate-400 hover:text-slate-200 rounded"
+                className="p-1 text-[#64748B] hover:text-[#243447] rounded"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -368,56 +464,55 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="block font-semibold text-slate-300 mb-1">Resource ID / Number *</label>
+                <label className="block font-semibold text-[#243447] mb-1">Resource Code / Number *</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. ICU-05, OR-03, BED-201"
+                  placeholder="e.g. ICU-05, WARD-12, OR-02"
                   value={newNumber}
                   onChange={(e) => setNewNumber(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs"
+                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2 text-xs text-[#243447] focus:outline-none focus:border-[#1976D2]"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-300 mb-1">Display Name *</label>
+                <label className="block font-semibold text-[#243447] mb-1">Resource Name *</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Intensive Care Bed 05"
+                  placeholder="e.g. Critical Care Bed 5"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs"
+                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2 text-xs text-[#243447] focus:outline-none focus:border-[#1976D2]"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-300 mb-1">Resource Type</label>
+                  <label className="block font-semibold text-[#243447] mb-1">Category Type</label>
                   <select
                     value={newType}
                     onChange={(e) => setNewType(e.target.value as ResourceType)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2 text-xs text-[#243447]"
                   >
                     <option value="BED">General Bed</option>
                     <option value="ICU_BED">ICU Bed</option>
                     <option value="OPERATING_ROOM">Operating Room</option>
-                    <option value="DOCTOR">Doctor</option>
-                    <option value="NURSE">Nurse</option>
+                    <option value="VENTILATOR">Ventilator / Equipment</option>
                     <option value="AMBULANCE">Ambulance</option>
-                    <option value="VENTILATOR">Ventilator</option>
-                    <option value="EQUIPMENT">Equipment</option>
+                    <option value="DOCTOR">Physician</option>
+                    <option value="NURSE">Nurse</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-300 mb-1">Department</label>
+                  <label className="block font-semibold text-[#243447] mb-1">Department</label>
                   <select
                     value={newDeptId}
                     onChange={(e) => setNewDeptId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2 text-xs text-[#243447]"
                   >
-                    <option value="">Hospital Core</option>
+                    <option value="">General Facility</option>
                     {departments.map((d) => (
                       <option key={d.id} value={d.id}>
                         {d.name}
@@ -427,43 +522,30 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-300 mb-1">Capacity</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={newCapacity}
-                    onChange={(e) => setNewCapacity(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-300 mb-1">Location / Ward</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Floor 3, Wing B"
-                    value={newLocation}
-                    onChange={(e) => setNewLocation(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs"
-                  />
-                </div>
+              <div>
+                <label className="block font-semibold text-[#243447] mb-1">Physical Location</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Wing B, 2nd Floor, Room 204"
+                  value={newLocation}
+                  onChange={(e) => setNewLocation(e.target.value)}
+                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2 text-xs text-[#243447]"
+                />
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#E2E8F0]">
               <button
                 type="button"
                 onClick={() => setShowAddModal(false)}
-                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
+                className="px-4 py-2 rounded-lg bg-white border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#243447] text-xs font-semibold"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md transition disabled:opacity-50"
+                className="px-4 py-2 rounded-lg bg-[#1976D2] hover:bg-[#1565C0] text-white text-xs font-semibold shadow-xs disabled:opacity-50"
               >
                 {isSubmitting ? "Creating..." : "Save Resource"}
               </button>
@@ -472,24 +554,24 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
         </div>
       )}
 
-      {/* Status / Maintenance Modal */}
+      {/* Edit Status Modal */}
       {editingResource && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-2xs flex items-center justify-center p-4">
           <form
             onSubmit={handleUpdateStatus}
-            className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-5 shadow-2xl space-y-4"
+            className="bg-white border border-[#E2E8F0] rounded-xl max-w-md w-full p-5 shadow-xl space-y-4"
           >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E2E8F0]">
               <div>
-                <h3 className="text-sm font-bold text-white">
-                  Update Status: {editingResource.name} ({editingResource.resourceNumber})
-                </h3>
-                <p className="text-xs text-slate-400">Current status: {editingResource.status}</p>
+                <h3 className="text-sm font-bold text-[#243447]">Manage Resource Status</h3>
+                <p className="text-xs text-[#64748B]">
+                  {editingResource.name} ({editingResource.resourceNumber})
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setEditingResource(null)}
-                className="p-1 text-slate-400 hover:text-slate-200 rounded"
+                className="p-1 text-[#64748B] hover:text-[#243447] rounded"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -497,53 +579,48 @@ export const ResourcesView: React.FC<ResourcesViewProps> = ({
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="block font-semibold text-slate-300 mb-1">Select Status</label>
+                <label className="block font-semibold text-[#243447] mb-1">Update Status To</label>
                 <select
                   value={editStatus}
                   onChange={(e) => setEditStatus(e.target.value as ResourceState)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs"
+                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2 text-xs text-[#243447]"
                 >
-                  <option value="AVAILABLE">AVAILABLE (Ready for assignment)</option>
-                  <option value="MAINTENANCE">MAINTENANCE (Offline for sanitization / repair)</option>
-                  <option value="UNAVAILABLE">UNAVAILABLE (Equipment failure or outage)</option>
-                  <option value="RESERVED">RESERVED (Staged for incoming trauma)</option>
+                  <option value="AVAILABLE">Available (Ready for allocation)</option>
+                  <option value="MAINTENANCE">Maintenance / Servicing</option>
+                  <option value="RESERVED">Reserved (Pre-booked for emergency)</option>
+                  <option value="UNAVAILABLE">Unavailable / Out of service</option>
                 </select>
               </div>
 
               {(editStatus === "MAINTENANCE" || editStatus === "UNAVAILABLE") && (
                 <div>
-                  <label className="block font-semibold text-slate-300 mb-1">
-                    Maintenance / Outage Reason *
-                  </label>
-                  <textarea
-                    rows={2}
+                  <label className="block font-semibold text-[#243447] mb-1">Reason / Notes</label>
+                  <input
+                    type="text"
                     required
-                    placeholder="e.g. Scheduled HEPA filter decontamination and calibration."
+                    placeholder="e.g. Scheduled sanitization, oxygen line check"
                     value={maintenanceReason}
                     onChange={(e) => setMaintenanceReason(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2 text-xs text-[#243447]"
                   />
-                  <p className="mt-1 text-[11px] text-amber-400">
-                    Warning: Marking this resource offline will immediately flag any active patient allocations for clinical review.
-                  </p>
                 </div>
               )}
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#E2E8F0]">
               <button
                 type="button"
                 onClick={() => setEditingResource(null)}
-                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
+                className="px-4 py-2 rounded-lg bg-white border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#243447] text-xs font-semibold"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={isUpdatingStatus}
-                className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md transition disabled:opacity-50"
+                className="px-4 py-2 rounded-lg bg-[#1976D2] hover:bg-[#1565C0] text-white text-xs font-semibold shadow-xs disabled:opacity-50"
               >
-                {isUpdatingStatus ? "Saving..." : "Commit Status Change"}
+                {isUpdatingStatus ? "Updating..." : "Confirm Status"}
               </button>
             </div>
           </form>

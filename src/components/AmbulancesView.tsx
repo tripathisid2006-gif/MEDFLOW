@@ -8,6 +8,9 @@ import {
   Clock,
   Wrench,
   X,
+  MapPin,
+  Users,
+  ShieldCheck,
 } from "lucide-react";
 import type {
   Ambulance,
@@ -27,36 +30,6 @@ interface AmbulancesViewProps {
   onRefresh: () => void;
   onInitUnits: () => void;
 }
-
-const AMB_STATUS_BADGES: Record<
-  string,
-  { label: string; bg: string; text: string; border: string }
-> = {
-  AVAILABLE: {
-    label: "AVAILABLE",
-    bg: "bg-emerald-950/80",
-    text: "text-emerald-300",
-    border: "border-emerald-800",
-  },
-  DISPATCHED: {
-    label: "DISPATCHED",
-    bg: "bg-blue-950/80",
-    text: "text-blue-300",
-    border: "border-blue-800",
-  },
-  EN_ROUTE_HOSPITAL: {
-    label: "EN ROUTE TO ED",
-    bg: "bg-indigo-950/80",
-    text: "text-indigo-300",
-    border: "border-indigo-800",
-  },
-  MAINTENANCE: {
-    label: "MAINTENANCE",
-    bg: "bg-amber-950/80",
-    text: "text-amber-300",
-    border: "border-amber-800",
-  },
-};
 
 export const AmbulancesView: React.FC<AmbulancesViewProps> = ({
   ambulances,
@@ -80,7 +53,7 @@ export const AmbulancesView: React.FC<AmbulancesViewProps> = ({
   const [destination, setDestination] = useState("");
   const [isDispatching, setIsDispatching] = useState(false);
 
-  // Status toggle
+  // Status modal
   const [editingAmb, setEditingAmb] = useState<Ambulance | null>(null);
   const [newStatus, setNewStatus] = useState<any>("AVAILABLE");
 
@@ -93,9 +66,9 @@ export const AmbulancesView: React.FC<AmbulancesViewProps> = ({
     try {
       await createAmbulanceApi({
         unitNumber: unitNumber.trim(),
-        licensePlate: plate.trim() || "MED-FL-01",
-        vehicleModel: model.trim() || "Ford Transit Type II Mobile ICU",
-        baseStation: baseStation.trim() || "Hospital ED Bay 1",
+        licensePlate: plate.trim() || "KA-04-ME-1024",
+        vehicleModel: model.trim() || "Force Traveller Advance Life Support (ALS)",
+        baseStation: baseStation.trim() || "Hospital Trauma Bay 1",
         crewOnBoard: crew.split(",").map((s) => s.trim()).filter(Boolean),
         status: "AVAILABLE",
       });
@@ -118,13 +91,13 @@ export const AmbulancesView: React.FC<AmbulancesViewProps> = ({
     if (!dispatchingAmb) return;
     setIsDispatching(true);
     try {
-      const pat = patients.find((p) => p.id === selectedPatientId);
+      const patient = patients.find((p) => p.id === selectedPatientId);
       await updateAmbulanceStatusApi(
         dispatchingAmb.id,
         "DISPATCHED",
-        selectedPatientId || undefined,
-        pat?.name,
-        destination || "Scene Dispatch"
+        selectedPatientId,
+        patient?.name,
+        destination || "Emergency Scene Dispatch"
       );
       setDispatchingAmb(null);
       setSelectedPatientId("");
@@ -137,29 +110,39 @@ export const AmbulancesView: React.FC<AmbulancesViewProps> = ({
     }
   };
 
-  const handleUpdateStatus = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleUpdateStatus = async () => {
     if (!editingAmb) return;
     try {
       await updateAmbulanceStatusApi(editingAmb.id, newStatus);
       setEditingAmb(null);
       onRefresh();
     } catch (err: any) {
-      alert("Failed to update status: " + err.message);
+      alert("Failed to update ambulance status: " + err.message);
     }
   };
+
+  // Fleet summary counts
+  const availableCount = ambulances.filter((a) => a.status === "AVAILABLE").length;
+  const dispatchedCount = ambulances.filter(
+    (a) => a.status === "DISPATCHED" || a.status === "EN_ROUTE" || a.status === "AT_HOSPITAL"
+  ).length;
+  const maintenanceCount = ambulances.filter((a) => a.status === "MAINTENANCE").length;
 
   return (
     <div className="space-y-6 pb-12">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E2E8F0] pb-4">
         <div>
-          <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-            <AmbulanceIcon className="w-5 h-5 text-yellow-400" />
-            <span>Emergency Ambulance Fleet</span>
-          </h2>
-          <p className="text-xs text-slate-400">
-            Pre-hospital trauma coordination, mobile intensive care units, and fleet readiness.
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-bold text-[#243447] tracking-tight font-heading">
+              Ambulance Emergency Fleet
+            </h1>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-[#EAF4FF] text-[#1976D2]">
+              {ambulances.length} Emergency Units
+            </span>
+          </div>
+          <p className="text-xs text-[#64748B] mt-0.5">
+            Rapid trauma dispatch, live GPS telemetry, paramedic crew management, and intake routing.
           </p>
         </div>
 
@@ -167,135 +150,166 @@ export const AmbulancesView: React.FC<AmbulancesViewProps> = ({
           {ambulances.length === 0 && (
             <button
               onClick={onInitUnits}
-              className="px-3.5 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold shadow-sm transition"
+              className="px-3.5 py-2 rounded-lg bg-[#0F9D8A] hover:bg-[#0c8575] text-white text-xs font-semibold shadow-xs flex items-center gap-2 transition"
             >
-              Initialize Standard Fleet
+              <ShieldCheck className="w-4 h-4" />
+              <span>Initialize Fleet</span>
             </button>
           )}
+
           <button
             onClick={() => setShowAddModal(true)}
-            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md flex items-center gap-2 transition"
+            className="px-4 py-2 rounded-lg bg-[#1976D2] hover:bg-[#1565C0] text-white text-xs font-semibold shadow-xs flex items-center gap-2 transition"
           >
             <Plus className="w-4 h-4" />
-            <span>Add Ambulance Unit</span>
+            <span>Add Ambulance</span>
           </button>
         </div>
       </div>
 
-      {ambulances.length === 0 ? (
-        <div className="p-12 text-center text-xs text-slate-400 bg-slate-900 border border-slate-800 rounded-xl space-y-3">
-          <AmbulanceIcon className="w-10 h-10 text-slate-400 mx-auto" />
-          <p className="font-semibold text-slate-200">No emergency fleet units configured</p>
-          <p className="text-slate-400">Initialize standard units or add mobile trauma rigs to begin tracking.</p>
+      {/* Fleet Summary KPI Row */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="medical-card p-4">
+          <span className="text-xs font-semibold text-[#64748B]">Total Fleet</span>
+          <div className="text-2xl font-bold font-mono text-[#243447] mt-1">{ambulances.length}</div>
+          <span className="text-[11px] text-[#64748B] mt-0.5 block">ALS & BLS Units</span>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {ambulances.map((amb) => {
-            const badge = AMB_STATUS_BADGES[amb.status] || AMB_STATUS_BADGES.AVAILABLE;
-            return (
-              <div
-                key={amb.id}
-                className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-3 hover:border-slate-700 transition flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <div className="p-2 rounded-lg bg-slate-950 border border-slate-800 text-yellow-400">
-                        <AmbulanceIcon className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="font-bold text-sm text-white">{amb.unitNumber}</div>
-                        <div className="text-[11px] font-mono text-slate-400">{amb.licensePlate}</div>
-                      </div>
+
+        <div className="medical-card p-4">
+          <span className="text-xs font-semibold text-[#16A34A]">Ready / Available</span>
+          <div className="text-2xl font-bold font-mono text-[#16A34A] mt-1">{availableCount}</div>
+          <span className="text-[11px] text-[#16A34A] mt-0.5 block">Immediate dispatch</span>
+        </div>
+
+        <div className="medical-card p-4">
+          <span className="text-xs font-semibold text-[#1976D2]">In Transit / Dispatched</span>
+          <div className="text-2xl font-bold font-mono text-[#1976D2] mt-1">{dispatchedCount}</div>
+          <span className="text-[11px] text-[#64748B] mt-0.5 block">En route or scene</span>
+        </div>
+
+        <div className="medical-card p-4">
+          <span className="text-xs font-semibold text-[#DC2626]">Maintenance</span>
+          <div className="text-2xl font-bold font-mono text-[#DC2626] mt-1">{maintenanceCount}</div>
+          <span className="text-[11px] text-[#64748B] mt-0.5 block">Servicing / check</span>
+        </div>
+      </div>
+
+      {/* Ambulances Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {ambulances.map((amb) => {
+          const isAvailable = amb.status === "AVAILABLE";
+          const isDispatched =
+            amb.status === "DISPATCHED" || amb.status === "EN_ROUTE" || amb.status === "AT_HOSPITAL";
+
+          return (
+            <div
+              key={amb.id}
+              className="medical-card p-5 flex flex-col justify-between space-y-4 hover:border-[#CBD5E1] transition"
+            >
+              <div>
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-lg bg-[#EAF4FF] text-[#1976D2] flex items-center justify-center">
+                      <AmbulanceIcon className="w-5 h-5" />
                     </div>
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badge.bg} ${badge.text} ${badge.border}`}
-                    >
-                      {badge.label}
-                    </span>
+                    <div>
+                      <h2 className="text-sm font-bold text-[#243447] font-mono">{amb.unitNumber || amb.vehicleNumber}</h2>
+                      <p className="text-xs text-[#64748B]">{amb.licensePlate}</p>
+                    </div>
                   </div>
 
-                  <div className="mt-3 space-y-1.5 text-xs text-slate-400">
-                    <div className="flex items-center justify-between">
-                      <span>Vehicle Model:</span>
-                      <span className="text-slate-200 font-medium">{amb.vehicleModel}</span>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <span>Base Station:</span>
-                      <span className="text-slate-200">{amb.baseStation}</span>
-                    </div>
-
-                    {amb.crewOnBoard && amb.crewOnBoard.length > 0 && (
-                      <div className="flex items-center justify-between">
-                        <span>Crew:</span>
-                        <span className="text-slate-300 truncate max-w-xs">{amb.crewOnBoard.join(", ")}</span>
-                      </div>
-                    )}
-
-                    {amb.currentPatientName && (
-                      <div className="p-2 rounded bg-indigo-950/40 border border-indigo-900/60 text-indigo-200 text-[11px] mt-2">
-                        Assigned: <span className="font-semibold">{amb.currentPatientName}</span>
-                        {amb.currentLocation && ` • Destination: ${amb.currentLocation}`}
-                      </div>
-                    )}
-                  </div>
+                  <span
+                    className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
+                      isAvailable
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : isDispatched
+                        ? "bg-blue-50 text-blue-700 border border-blue-200"
+                        : "bg-amber-50 text-amber-700 border border-amber-200"
+                    }`}
+                  >
+                    {amb.status.replace("_", " ")}
+                  </span>
                 </div>
 
-                <div className="pt-2 border-t border-slate-850 flex items-center justify-between">
-                  <button
-                    onClick={() => {
-                      setEditingAmb(amb);
-                      setNewStatus(amb.status);
-                    }}
-                    className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1"
-                  >
-                    <Wrench className="w-3.5 h-3.5" />
-                    <span>Status</span>
-                  </button>
+                <div className="mt-3 space-y-1.5 text-xs text-[#64748B]">
+                  <div className="text-[#243447] font-medium">{amb.vehicleModel}</div>
 
-                  {amb.status === "AVAILABLE" ? (
-                    <button
-                      onClick={() => {
-                        setDispatchingAmb(amb);
-                        setSelectedPatientId("");
-                        setDestination("");
-                      }}
-                      className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 transition"
-                    >
-                      <Navigation className="w-3.5 h-3.5" />
-                      <span>Dispatch</span>
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => updateAmbulanceStatusApi(amb.id, "AVAILABLE").then(onRefresh)}
-                      className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
-                    >
-                      Mark Available
-                    </button>
+                  <div className="flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-[#94A3B8]" />
+                    <span>Station: {amb.baseStation || "Emergency Bay"}</span>
+                  </div>
+
+                  {amb.currentPatientName && (
+                    <div className="p-2 rounded bg-[#EAF4FF] text-[#1976D2] font-medium text-[11px]">
+                      Patient on board: <strong>{amb.currentPatientName}</strong>
+                    </div>
+                  )}
+
+                  {amb.crewOnBoard && amb.crewOnBoard.length > 0 && (
+                    <div className="flex items-center gap-1.5 text-[11px]">
+                      <Users className="w-3.5 h-3.5 text-[#94A3B8]" />
+                      <span>Crew: {amb.crewOnBoard.join(", ")}</span>
+                    </div>
                   )}
                 </div>
               </div>
-            );
-          })}
-        </div>
-      )}
+
+              {/* Action Buttons */}
+              <div className="pt-3 border-t border-[#E2E8F0] flex items-center justify-between gap-2">
+                <button
+                  onClick={() => {
+                    setEditingAmb(amb);
+                    setNewStatus(amb.status);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-white border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#243447] text-xs font-semibold transition"
+                >
+                  Status
+                </button>
+
+                {isAvailable ? (
+                  <button
+                    onClick={() => {
+                      setDispatchingAmb(amb);
+                      setSelectedPatientId("");
+                      setDestination("");
+                    }}
+                    className="flex-1 py-1.5 rounded-lg bg-[#1976D2] hover:bg-[#1565C0] text-white text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition"
+                  >
+                    <Navigation className="w-3.5 h-3.5" />
+                    <span>Dispatch</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={async () => {
+                      await updateAmbulanceStatusApi(amb.id, "AVAILABLE");
+                      onRefresh();
+                    }}
+                    className="flex-1 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition"
+                  >
+                    Mark Ready / Clear
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
       {/* Dispatch Modal */}
       {dispatchingAmb && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-2xs flex items-center justify-center p-4">
           <form
             onSubmit={handleDispatch}
-            className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-5 shadow-2xl space-y-4"
+            className="bg-white border border-[#E2E8F0] rounded-xl max-w-md w-full p-5 shadow-xl space-y-4"
           >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-sm font-bold text-white">
-                Dispatch Ambulance: {dispatchingAmb.unitNumber}
+            <div className="flex items-center justify-between pb-3 border-b border-[#E2E8F0]">
+              <h3 className="text-sm font-bold text-[#243447]">
+                Dispatch Ambulance {dispatchingAmb.unitNumber}
               </h3>
               <button
                 type="button"
                 onClick={() => setDispatchingAmb(null)}
-                className="p-1 text-slate-400 hover:text-slate-200 rounded"
+                className="p-1 text-[#64748B] hover:text-[#243447] rounded"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -303,209 +317,100 @@ export const AmbulancesView: React.FC<AmbulancesViewProps> = ({
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="block font-semibold text-slate-300 mb-1">
-                  Assign to Incoming / Registered Patient (Optional)
-                </label>
+                <label className="block font-semibold text-[#243447] mb-1">Select Incoming Patient (Optional)</label>
                 <select
                   value={selectedPatientId}
                   onChange={(e) => setSelectedPatientId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs"
+                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2 text-xs text-[#243447]"
                 >
-                  <option value="">-- General Scene Dispatch --</option>
+                  <option value="">-- No specific patient assigned yet --</option>
                   {waitingPatients.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} ({p.mrn}) — {p.urgencyLevel}
+                      {p.name} ({p.mrn}) • {p.urgencyLevel}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-300 mb-1">
-                  Dispatch Location / Coordinates *
-                </label>
+                <label className="block font-semibold text-[#243447] mb-1">Destination / Incident Location *</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Highway 101 North Mile Marker 42, Multi-vehicle collision"
+                  placeholder="e.g. Ring Road Junction Trauma, Bengaluru"
                   value={destination}
                   onChange={(e) => setDestination(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs"
+                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2 text-xs text-[#243447] focus:outline-none focus:border-[#1976D2]"
                 />
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#E2E8F0]">
               <button
                 type="button"
                 onClick={() => setDispatchingAmb(null)}
-                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
+                className="px-4 py-2 rounded-lg bg-white border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#243447] text-xs font-semibold"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={isDispatching}
-                className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md transition disabled:opacity-50 flex items-center gap-2"
+                className="px-4 py-2 rounded-lg bg-[#1976D2] hover:bg-[#1565C0] text-white text-xs font-semibold shadow-xs disabled:opacity-50"
               >
-                <Navigation className="w-4 h-4" />
-                <span>{isDispatching ? "Dispatching..." : "Confirm Dispatch"}</span>
+                {isDispatching ? "Dispatching..." : "Confirm Dispatch"}
               </button>
             </div>
           </form>
         </div>
       )}
 
-      {/* Edit Status Modal */}
+      {/* Status Modal */}
       {editingAmb && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <form
-            onSubmit={handleUpdateStatus}
-            className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-5 shadow-2xl space-y-4"
-          >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-sm font-bold text-white">
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-2xs flex items-center justify-center p-4">
+          <div className="bg-white border border-[#E2E8F0] rounded-xl max-w-md w-full p-5 shadow-xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E2E8F0]">
+              <h3 className="text-sm font-bold text-[#243447]">
                 Update Status: {editingAmb.unitNumber}
               </h3>
               <button
-                type="button"
                 onClick={() => setEditingAmb(null)}
-                className="p-1 text-slate-400 hover:text-slate-200 rounded"
+                className="p-1 text-[#64748B] hover:text-[#243447] rounded"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-3 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-300 mb-1">Ambulance Fleet Status</label>
-                <select
-                  value={newStatus}
-                  onChange={(e) => setNewStatus(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs"
-                >
-                  <option value="AVAILABLE">AVAILABLE (Stationed at bay)</option>
-                  <option value="DISPATCHED">DISPATCHED (En route to emergency)</option>
-                  <option value="EN_ROUTE_HOSPITAL">EN ROUTE TO ED (Patient on board)</option>
-                  <option value="MAINTENANCE">MAINTENANCE (Mechanical servicing)</option>
-                </select>
-              </div>
+              <label className="block font-semibold text-[#243447]">Ambulance Status</label>
+              <select
+                value={newStatus}
+                onChange={(e) => setNewStatus(e.target.value)}
+                className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2 text-xs text-[#243447]"
+              >
+                <option value="AVAILABLE">AVAILABLE (Stationed in trauma bay)</option>
+                <option value="DISPATCHED">DISPATCHED (En route to emergency scene)</option>
+                <option value="EN_ROUTE">EN ROUTE TO HOSPITAL (Patient loaded)</option>
+                <option value="AT_HOSPITAL">AT HOSPITAL (Arrived at ED bay)</option>
+                <option value="MAINTENANCE">MAINTENANCE (Mechanical or oxygen servicing)</option>
+              </select>
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#E2E8F0]">
               <button
-                type="button"
                 onClick={() => setEditingAmb(null)}
-                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
+                className="px-4 py-2 rounded-lg bg-white border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#243447] text-xs font-semibold"
               >
                 Cancel
               </button>
               <button
-                type="submit"
-                className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md transition"
+                onClick={handleUpdateStatus}
+                className="px-4 py-2 rounded-lg bg-[#1976D2] hover:bg-[#1565C0] text-white text-xs font-semibold shadow-xs"
               >
                 Save Status
               </button>
             </div>
-          </form>
-        </div>
-      )}
-
-      {/* Add Ambulance Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <form
-            onSubmit={handleAddAmbulance}
-            className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-5 shadow-2xl space-y-4"
-          >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-sm font-bold text-white">Add Ambulance Unit</h3>
-              <button
-                type="button"
-                onClick={() => setShowAddModal(false)}
-                className="p-1 text-slate-400 hover:text-slate-200 rounded"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-300 mb-1">Unit Call Sign / ID *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. AMB-04"
-                  value={unitNumber}
-                  onChange={(e) => setUnitNumber(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-300 mb-1">License Plate</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. MED-9912"
-                    value={plate}
-                    onChange={(e) => setPlate(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-300 mb-1">Vehicle Model</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Mercedes Sprinter MICU"
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-300 mb-1">Base Station / Bay</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Hospital Trauma Bay 2"
-                  value={baseStation}
-                  onChange={(e) => setBaseStation(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-300 mb-1">Crew Members (comma separated)</label>
-                <input
-                  type="text"
-                  placeholder="e.g. John Miller (EMT-P), Sarah Connor (RN)"
-                  value={crew}
-                  onChange={(e) => setCrew(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
-              <button
-                type="button"
-                onClick={() => setShowAddModal(false)}
-                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md transition disabled:opacity-50"
-              >
-                {isSubmitting ? "Creating..." : "Save Unit"}
-              </button>
-            </div>
-          </form>
+          </div>
         </div>
       )}
     </div>

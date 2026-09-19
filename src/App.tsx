@@ -8,9 +8,11 @@ import { ResourcesView } from "./components/ResourcesView";
 import { AllocationsView } from "./components/AllocationsView";
 import { DepartmentsView } from "./components/DepartmentsView";
 import { AmbulancesView } from "./components/AmbulancesView";
+import { AnalyticsView } from "./components/AnalyticsView";
 import { StrategiesView } from "./components/StrategiesView";
 import { AuditView } from "./components/AuditView";
 import { SettingsView } from "./components/SettingsView";
+import { LandingPage } from "./components/LandingPage";
 import type {
   HospitalStats,
   HospitalAlert,
@@ -41,12 +43,13 @@ import {
 } from "./api";
 
 export function App() {
-  // Navigation State
+  // Navigation State & View Mode
+  const [viewMode, setViewMode] = useState<"portal" | "landing">("portal");
   const [activeTab, setActiveTab] = useState<string>("dashboard");
 
   // User Role Simulation
   const [currentRole, setCurrentRole] = useState<UserRole>("TRIAGE_NURSE");
-  const [currentUserName, setCurrentUserName] = useState<string>("Nurse J. Martinez, RN");
+  const [currentUserName, setCurrentUserName] = useState<string>("Nurse Anitha Rao, GNM RN");
 
   // Domain Data States
   const [stats, setStats] = useState<HospitalStats | null>(null);
@@ -114,8 +117,7 @@ export function App() {
     loadAllData();
 
     // Subscribe to SSE updates from server
-    const unsubscribe = subscribeToRealtime((event) => {
-      // Whenever server broadcasts state change, refresh data
+    const unsubscribe = subscribeToRealtime(() => {
       loadAllData();
     });
 
@@ -130,13 +132,15 @@ export function App() {
     if (name) {
       setCurrentUserName(name);
     } else if (role === "DOCTOR") {
-      setCurrentUserName("Dr. Marcus Chen, MD");
-    } else if (role === "TRIAGE_NURSE" || role === "NURSE") {
-      setCurrentUserName("Nurse J. Martinez, RN");
+      setCurrentUserName("Dr. Arvind Swaminathan, MD, DM");
+    } else if (role === "TRIAGE_NURSE") {
+      setCurrentUserName("Nurse Anitha Rao, GNM RN");
+    } else if (role === "NURSE") {
+      setCurrentUserName("Nurse Deepa Nair, BSc RN");
     } else if (role === "COORDINATOR" || role === "OPERATOR") {
-      setCurrentUserName("Alex Rivera (ED Coordinator)");
+      setCurrentUserName("Kavya Shetty (ED Coordinator)");
     } else {
-      setCurrentUserName("Admin Sarah Connor");
+      setCurrentUserName("Dr. K. S. Venkatesh, MD, MHA");
     }
   };
 
@@ -161,8 +165,21 @@ export function App() {
     (a) => a.status === "ACTIVE" || a.status === "FLAGGED_REVIEW"
   ).length;
 
+  if (viewMode === "landing") {
+    return (
+      <LandingPage
+        onEnterPortal={() => setViewMode("portal")}
+        onSelectRole={(role, name) => {
+          setCurrentRole(role);
+          setCurrentUserName(name);
+          setViewMode("portal");
+        }}
+      />
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans antialiased">
+    <div className="min-h-screen bg-[#F7FAFC] text-[#243447] flex flex-col font-sans antialiased">
       {/* Top Application Header */}
       <Header
         currentRole={currentRole}
@@ -171,7 +188,10 @@ export function App() {
         settings={settings}
         alerts={alerts}
         realtimeConnected={true}
-        onNavigateToTab={setActiveTab}
+        onNavigateToTab={(tab) => {
+          setActiveTab(tab);
+        }}
+        onOpenLanding={() => setViewMode("landing")}
       />
 
       {/* Main App Layout: Sidebar + Main Content Area */}
@@ -183,17 +203,19 @@ export function App() {
           criticalCount={criticalPatientsCount}
           activeAllocationsCount={activeAllocationsCount}
           currentRole={currentRole}
+          currentUserName={currentUserName}
+          onOpenLanding={() => setViewMode("landing")}
         />
 
-        <main className="flex-1 overflow-y-auto bg-slate-950 px-6 py-6 lg:px-8">
+        <main className="flex-1 overflow-y-auto bg-[#F7FAFC] px-4 sm:px-6 py-6 lg:px-8">
           {loadError && (
-            <div className="mb-6 p-4 rounded-xl bg-red-950/60 border border-red-800 text-red-200 text-xs flex items-center justify-between">
+            <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs flex items-center justify-between">
               <div>
-                <span className="font-bold">Server connection alert:</span> {loadError}
+                <strong className="font-semibold">Server connection alert:</strong> {loadError}
               </div>
               <button
                 onClick={loadAllData}
-                className="px-3 py-1 rounded bg-red-900 hover:bg-red-800 text-white font-semibold"
+                className="px-3 py-1 rounded bg-red-600 hover:bg-red-700 text-white font-semibold"
               >
                 Retry
               </button>
@@ -283,6 +305,15 @@ export function App() {
               currentUserName={currentUserName}
               onRefresh={loadAllData}
               onInitUnits={handleInitUnits}
+            />
+          )}
+
+          {activeTab === "analytics" && (
+            <AnalyticsView
+              stats={stats}
+              patients={patients}
+              resources={resources}
+              allocations={allocations}
             />
           )}
 

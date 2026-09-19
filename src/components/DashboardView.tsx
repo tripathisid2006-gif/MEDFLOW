@@ -3,25 +3,17 @@ import {
   Users,
   AlertOctagon,
   Clock,
-  Bed,
-  HeartPulse,
-  Syringe,
-  Stethoscope,
-  Activity,
+  Server,
   ArrowRight,
-  ShieldCheck,
   AlertTriangle,
-  Layers,
   Database,
+  Building2,
+  CheckCircle2,
 } from "lucide-react";
 import {
   PieChart,
   Pie,
   Cell,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
@@ -41,15 +33,16 @@ interface DashboardViewProps {
   resources: Resource[];
   allocations: ResourceAllocation[];
   settings: SystemSettings | null;
+  currentUserName?: string;
   onNavigate: (tab: string) => void;
   onInitUnits: () => void;
 }
 
-const URGENCY_COLORS: Record<string, string> = {
-  CRITICAL: "#ef4444", // Red
-  HIGH: "#f97316", // Orange
-  MODERATE: "#eab308", // Amber
-  LOW: "#3b82f6", // Blue
+const URGENCY_PALETTE: Record<string, string> = {
+  CRITICAL: "#DC2626", // Clean medical red
+  HIGH: "#F59E0B",     // Amber
+  MODERATE: "#1976D2", // Healthcare blue
+  LOW: "#16A34A",      // Success green
 };
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -59,10 +52,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   resources,
   allocations,
   settings,
+  currentUserName = "Hospital Staff",
   onNavigate,
   onInitUnits,
 }) => {
-  // Empty state check
+  // Greeting based on current local hour
+  const currentHour = new Date().getHours();
+  const timeGreeting =
+    currentHour < 12 ? "Good morning" : currentHour < 17 ? "Good afternoon" : "Good evening";
+
+  // Check if database is empty
   const isDatabaseEmpty =
     !stats ||
     (stats.totalPatients === 0 &&
@@ -73,449 +72,475 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   if (isDatabaseEmpty) {
     return (
-      <div className="p-8 max-w-4xl mx-auto text-center space-y-6">
-        <div className="w-16 h-16 rounded-2xl bg-blue-900/30 border border-blue-700/50 flex items-center justify-center text-blue-400 mx-auto">
-          <Database className="w-8 h-8" />
+      <div className="medical-card p-12 max-w-xl mx-auto text-center space-y-5 my-8">
+        <div className="w-14 h-14 rounded-full bg-[#EAF4FF] text-[#1976D2] flex items-center justify-center mx-auto">
+          <Database className="w-7 h-7" />
         </div>
         <div>
-          <h2 className="text-xl font-bold text-white tracking-tight">No live hospital data yet</h2>
-          <p className="mt-2 text-sm text-slate-400 max-w-md mx-auto">
-            The database is live and initialized. Register patients through intake or configure hospital units to begin deterministic resource allocation.
+          <h2 className="text-lg font-bold text-[#243447]">Hospital Database Ready</h2>
+          <p className="mt-1.5 text-xs text-[#64748B] leading-relaxed">
+            The database connection is active. Initialize standard clinical units or register patients to start live operations.
           </p>
         </div>
-        <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
+        <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
           <button
             id="empty-init-units-btn"
             onClick={onInitUnits}
-            className="px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg transition flex items-center gap-2"
+            className="px-4 py-2 rounded-lg bg-[#1976D2] hover:bg-[#1565C0] text-white text-xs font-semibold shadow-xs transition"
           >
-            <ShieldCheck className="w-4 h-4" />
-            Initialize Standard Hospital Units
+            Initialize Standard Units
           </button>
           <button
             id="empty-register-patient-btn"
             onClick={() => onNavigate("patients")}
-            className="px-4 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 text-xs font-semibold transition flex items-center gap-2"
+            className="px-4 py-2 rounded-lg bg-white border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#243447] text-xs font-semibold transition"
           >
-            <Users className="w-4 h-4" />
-            Register First Patient
+            Register Patient
           </button>
-        </div>
-        <div className="mt-8 p-4 rounded-xl bg-slate-900/50 border border-slate-800/80 text-xs text-slate-400 max-w-lg mx-auto text-left space-y-1.5">
-          <div className="font-semibold text-slate-300">MedFlow Core Architecture:</div>
-          <div>• Operationally authentic synthetic Indian hospital records.</div>
-          <div>• Real-time deterministic allocation with conflict detection.</div>
-          <div>• Explainable AI triage analysis with physician confirmation.</div>
         </div>
       </div>
     );
   }
 
-  // Calculate Urgency Distribution from real patients
+  // Active non-discharged patients
   const activePatients = patients.filter((p) => p.status !== "DISCHARGED");
-  const urgencyCounts: Record<string, number> = {
+
+  // Dynamic Row 1 Counts (strictly derived from database)
+  const patientsTodayCount = stats?.totalPatients ?? activePatients.length;
+  const criticalCasesCount =
+    stats?.criticalPatients ??
+    activePatients.filter((p) => p.urgencyLevel === "CRITICAL").length;
+  const waitingPatientsCount =
+    stats?.patientsWaiting ??
+    activePatients.filter((p) => p.status === "WAITING" || p.status === "TRIAGED").length;
+  const availableResourcesCount = resources.filter((r) => r.status === "AVAILABLE").length;
+
+  // Donut Chart Data: Patient Priority Overview (Critical, High, Moderate, Low)
+  const urgencyOrder = ["CRITICAL", "HIGH", "MODERATE", "LOW"] as const;
+  const urgencyCounts = {
     CRITICAL: activePatients.filter((p) => p.urgencyLevel === "CRITICAL").length,
     HIGH: activePatients.filter((p) => p.urgencyLevel === "HIGH").length,
     MODERATE: activePatients.filter((p) => p.urgencyLevel === "MODERATE").length,
     LOW: activePatients.filter((p) => p.urgencyLevel === "LOW").length,
   };
-  const urgencyPieData = Object.entries(urgencyCounts)
-    .filter(([_, count]) => count > 0)
-    .map(([level, count]) => ({ name: level, value: count }));
 
-  // Resource Utilization metrics
-  const calcUtil = (type: string) => {
+  const urgencyDonutData = urgencyOrder
+    .map((level) => ({
+      name: level,
+      value: urgencyCounts[level],
+      color: URGENCY_PALETTE[level],
+    }))
+    .filter((d) => d.value > 0);
+
+  // Resource Availability metrics (Horizontal progress bars)
+  const getResourceMetric = (type: string, label: string) => {
     const total = resources.filter((r) => r.type === type).length;
     const occupied = resources.filter((r) => r.type === type && r.status === "IN_USE").length;
-    return {
-      total,
-      occupied,
-      pct: total > 0 ? Math.round((occupied / total) * 100) : 0,
-    };
+    const available = resources.filter((r) => r.type === type && r.status === "AVAILABLE").length;
+    const pct = total > 0 ? Math.round((occupied / total) * 100) : 0;
+    return { label, total, occupied, available, pct };
   };
 
-  const bedsUtil = calcUtil("BED");
-  const icuUtil = calcUtil("ICU_BED");
-  const orUtil = calcUtil("OPERATING_ROOM");
-  const docUtil = calcUtil("DOCTOR");
-  const nurseUtil = calcUtil("NURSE");
-  const ambUtil = calcUtil("AMBULANCE");
+  const resourceProgressItems = [
+    getResourceMetric("BED", "General Beds"),
+    getResourceMetric("ICU_BED", "ICU Beds"),
+    getResourceMetric("OPERATING_ROOM", "Operating Rooms"),
+    getResourceMetric("DOCTOR", "Doctors"),
+    getResourceMetric("NURSE", "Nurses"),
+  ];
 
-  // Patients by Condition Category (Real from patient assessments / knownConditions)
-  const conditionMap: Record<string, number> = {};
-  for (const pat of activePatients) {
-    const conditions = pat.assessment?.possible_conditions || pat.knownConditions;
-    if (conditions && conditions.length > 0) {
-      for (const cond of conditions.slice(0, 1)) {
-        conditionMap[cond] = (conditionMap[cond] || 0) + 1;
-      }
-    } else if (pat.symptoms) {
-      const cat = pat.symptoms.split(",")[0].trim().slice(0, 20);
-      conditionMap[cat] = (conditionMap[cat] || 0) + 1;
-    }
-  }
-  const conditionBarData = Object.entries(conditionMap)
-    .slice(0, 5)
-    .map(([cat, count]) => ({ category: cat, patients: count }));
-
-  // Waiting Time Metrics
-  const waitingPatients = activePatients.filter((p) => p.status === "WAITING" || p.status === "TRIAGED");
-  const totalWait = waitingPatients.reduce((sum, p) => sum + p.waitingMinutes, 0);
-  const avgWait = waitingPatients.length > 0 ? Math.round(totalWait / waitingPatients.length) : 0;
-  const longestWaitPatient = waitingPatients.reduce<Patient | null>(
-    (max, p) => (!max || p.waitingMinutes > max.waitingMinutes ? p : max),
-    null
-  );
-  const threshold = settings?.maxWaitingThresholdMinutes || 45;
-  const patientsOverThreshold = waitingPatients.filter((p) => p.waitingMinutes > threshold).length;
+  // Top 5 Priority Queue Cases (waiting / triaged, sorted by priorityScore descending)
+  const topQueuePatients = activePatients
+    .filter((p) => p.status === "WAITING" || p.status === "TRIAGED")
+    .sort((a, b) => b.priorityScore - a.priorityScore)
+    .slice(0, 5);
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* Top Section: TODAY'S OPERATIONS */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h2 className="text-lg font-bold text-white tracking-tight">Today&apos;s Operations</h2>
-            <p className="text-xs text-slate-400">Real-time status across hospital capacity and clinical queue</p>
-          </div>
-          <button
-            onClick={() => onNavigate("queue")}
-            className="text-xs font-semibold text-blue-400 hover:text-blue-300 flex items-center gap-1 transition"
-          >
-            <span>Live Priority Queue</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
+    <div className="space-y-6 pb-8">
+      {/* Top Header Section */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E2E8F0] pb-4">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-[#243447] tracking-tight font-heading">
+            {timeGreeting}, {currentUserName}
+          </h1>
+          <p className="text-xs text-[#64748B] mt-0.5">
+            Hospital Operations Overview • Shantideep Multispeciality Hospital
+          </p>
         </div>
 
-        {/* Live KPI Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-medium">
-              <span>Total Patients</span>
-              <Users className="w-4 h-4 text-slate-400" />
-            </div>
-            <div className="mt-2 text-2xl font-bold text-white font-mono">{stats?.totalPatients ?? 0}</div>
-            <div className="text-[11px] text-slate-400 mt-1">Active hospital census</div>
-          </div>
+        <div className="flex items-center gap-2 text-xs">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#E8F7F4] text-[#0F9D8A] font-semibold border border-[#0F9D8A]/20">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#0F9D8A] animate-pulse" />
+            <span>Live • Updated just now</span>
+          </span>
+        </div>
+      </div>
 
-          <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-medium">
-              <span className="text-red-400">Critical Cases</span>
-              <AlertOctagon className="w-4 h-4 text-red-500" />
-            </div>
-            <div className="mt-2 text-2xl font-bold text-red-400 font-mono">{stats?.criticalPatients ?? 0}</div>
-            <div className="text-[11px] text-red-400/80 mt-1">Immediate life threat</div>
+      {/* ==================================================
+          FIRST ROW: 4 COMPACT CARDS
+          Patients Today | Critical Cases | Waiting Patients | Available Resources
+          ================================================== */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Card 1: Patients Today */}
+        <div className="medical-card p-4 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-[#64748B]">
+            <span className="text-xs font-semibold">Patients Today</span>
+            <Users className="w-4 h-4 text-[#1976D2]" />
           </div>
-
-          <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-medium">
-              <span className="text-amber-400">Patients Waiting</span>
-              <Clock className="w-4 h-4 text-amber-400" />
+          <div className="my-2">
+            <div className="text-2xl sm:text-3xl font-bold text-[#243447] font-mono">
+              {patientsTodayCount}
             </div>
-            <div className="mt-2 text-2xl font-bold text-amber-300 font-mono">{stats?.patientsWaiting ?? 0}</div>
-            <div className="text-[11px] text-slate-400 mt-1">In triage or queued</div>
           </div>
-
-          <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-medium">
-              <span>ICU Availability</span>
-              <HeartPulse className="w-4 h-4 text-pink-400" />
-            </div>
-            <div className="mt-2 text-2xl font-bold text-white font-mono">
-              <span className={stats && stats.icuAvailable === 0 ? "text-red-400" : "text-emerald-400"}>
-                {stats?.icuAvailable ?? 0}
-              </span>
-              <span className="text-slate-400 text-sm font-normal"> / {stats?.totalIcu ?? 0}</span>
-            </div>
-            <div className="text-[11px] text-slate-400 mt-1">Critical care beds open</div>
+          <div className="text-[11px] text-[#64748B] flex items-center justify-between">
+            <span>Total registered</span>
+            <span className="text-[#1976D2] font-semibold cursor-pointer" onClick={() => onNavigate("patients")}>
+              View roster →
+            </span>
           </div>
+        </div>
 
-          <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-medium">
-              <span>General Beds</span>
-              <Bed className="w-4 h-4 text-blue-400" />
-            </div>
-            <div className="mt-2 text-2xl font-bold text-white font-mono">
-              <span className="text-emerald-400">{stats?.availableBeds ?? 0}</span>
-              <span className="text-slate-400 text-sm font-normal"> / {stats?.totalBeds ?? 0}</span>
-            </div>
-            <div className="text-[11px] text-slate-400 mt-1">Acute & ward beds open</div>
+        {/* Card 2: Critical Cases */}
+        <div className="medical-card p-4 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-[#64748B]">
+            <span className="text-xs font-semibold text-[#DC2626]">Critical Cases</span>
+            <AlertOctagon className="w-4 h-4 text-[#DC2626]" />
           </div>
-
-          <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-medium">
-              <span>Operating Rooms</span>
-              <Syringe className="w-4 h-4 text-indigo-400" />
+          <div className="my-2">
+            <div className="text-2xl sm:text-3xl font-bold text-[#DC2626] font-mono">
+              {criticalCasesCount}
             </div>
-            <div className="mt-2 text-2xl font-bold text-white font-mono">
-              <span className="text-emerald-400">{stats?.operatingRoomsAvailable ?? 0}</span>
-              <span className="text-slate-400 text-sm font-normal"> / {stats?.totalOperatingRooms ?? 0}</span>
-            </div>
-            <div className="text-[11px] text-slate-400 mt-1">Surgical suites open</div>
           </div>
-
-          <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-medium">
-              <span>Doctors Available</span>
-              <Stethoscope className="w-4 h-4 text-cyan-400" />
-            </div>
-            <div className="mt-2 text-2xl font-bold text-white font-mono">
-              <span className="text-emerald-400">{stats?.doctorsAvailable ?? 0}</span>
-              <span className="text-slate-400 text-sm font-normal"> / {stats?.totalDoctors ?? 0}</span>
-            </div>
-            <div className="text-[11px] text-slate-400 mt-1">On-duty physicians</div>
+          <div className="text-[11px] text-[#64748B] flex items-center justify-between">
+            <span className="text-[#DC2626] font-medium">Immediate attention</span>
+            <span className="text-[#DC2626] font-semibold cursor-pointer" onClick={() => onNavigate("queue")}>
+              Prioritize →
+            </span>
           </div>
+        </div>
 
-          <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-medium">
-              <span>Nurses Available</span>
-              <Activity className="w-4 h-4 text-teal-400" />
-            </div>
-            <div className="mt-2 text-2xl font-bold text-white font-mono">
-              <span className="text-emerald-400">{stats?.nursesAvailable ?? 0}</span>
-              <span className="text-slate-400 text-sm font-normal"> / {stats?.totalNurses ?? 0}</span>
-            </div>
-            <div className="text-[11px] text-slate-400 mt-1">On-duty nursing staff</div>
+        {/* Card 3: Waiting Patients */}
+        <div className="medical-card p-4 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-[#64748B]">
+            <span className="text-xs font-semibold text-[#F59E0B]">Waiting Patients</span>
+            <Clock className="w-4 h-4 text-[#F59E0B]" />
           </div>
-
-          <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-medium">
-              <span>Active Allocations</span>
-              <Layers className="w-4 h-4 text-purple-400" />
+          <div className="my-2">
+            <div className="text-2xl sm:text-3xl font-bold text-[#243447] font-mono">
+              {waitingPatientsCount}
             </div>
-            <div className="mt-2 text-2xl font-bold text-purple-300 font-mono">{stats?.activeAllocations ?? 0}</div>
-            <div className="text-[11px] text-slate-400 mt-1">Assigned resource pairs</div>
           </div>
+          <div className="text-[11px] text-[#64748B] flex items-center justify-between">
+            <span>In triage & queue</span>
+            <span className="text-[#F59E0B] font-semibold cursor-pointer" onClick={() => onNavigate("queue")}>
+              View queue →
+            </span>
+          </div>
+        </div>
 
-          <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-medium">
-              <span>Ambulances Available</span>
-              <Activity className="w-4 h-4 text-yellow-400" />
+        {/* Card 4: Available Resources */}
+        <div className="medical-card p-4 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-[#64748B]">
+            <span className="text-xs font-semibold text-[#16A34A]">Available Resources</span>
+            <Server className="w-4 h-4 text-[#16A34A]" />
+          </div>
+          <div className="my-2">
+            <div className="text-2xl sm:text-3xl font-bold text-[#243447] font-mono">
+              {availableResourcesCount}
             </div>
-            <div className="mt-2 text-2xl font-bold text-white font-mono">
-              <span className="text-emerald-400">{stats?.ambulancesAvailable ?? 0}</span>
-              <span className="text-slate-400 text-sm font-normal"> / {stats?.totalAmbulances ?? 0}</span>
-            </div>
-            <div className="text-[11px] text-slate-400 mt-1">Ready for dispatch</div>
+          </div>
+          <div className="text-[11px] text-[#64748B] flex items-center justify-between">
+            <span>Ready for allocation</span>
+            <span className="text-[#16A34A] font-semibold cursor-pointer" onClick={() => onNavigate("resources")}>
+              Manage →
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Real-time Alerts Banner if present */}
-      {alerts.length > 0 && (
-        <div className="space-y-2">
-          {alerts.slice(0, 2).map((alert) => (
-            <div
-              key={alert.id}
-              className={`p-3 rounded-xl border flex items-center justify-between text-xs ${
-                alert.severity === "CRITICAL"
-                  ? "bg-red-950/40 border-red-800/80 text-red-200"
-                  : "bg-amber-950/40 border-amber-800/80 text-amber-200"
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <AlertTriangle className="w-4 h-4 shrink-0" />
-                <div>
-                  <span className="font-semibold">{alert.title}:</span> {alert.message}
-                </div>
+      {/* ==================================================
+          SECOND ROW:
+          LEFT: Patient Priority Overview (Donut Chart)
+          RIGHT: Resource Availability (Horizontal Progress Bars)
+          ================================================== */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left: Patient Priority Overview Donut Chart */}
+        <div className="lg:col-span-5 medical-card p-5 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-[#243447]">Patient Priority Overview</h2>
+              <span className="text-[11px] font-medium text-[#64748B]">Active census</span>
+            </div>
+            <p className="text-xs text-[#64748B] mt-0.5">Urgency tier distribution</p>
+          </div>
+
+          <div className="my-4 flex items-center justify-between gap-4">
+            {urgencyDonutData.length === 0 ? (
+              <div className="w-full py-12 text-center text-xs text-[#64748B]">
+                No patients in queue currently.
               </div>
+            ) : (
+              <>
+                <div className="w-1/2 h-44">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={urgencyDonutData}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={42}
+                        outerRadius={65}
+                        paddingAngle={3}
+                      >
+                        {urgencyDonutData.map((entry) => (
+                          <Cell key={entry.name} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "#FFFFFF",
+                          border: "1px solid #E2E8F0",
+                          borderRadius: "8px",
+                          fontSize: "12px",
+                          color: "#243447",
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="w-1/2 space-y-2 text-xs">
+                  {urgencyOrder.map((level) => {
+                    const count = urgencyCounts[level];
+                    return (
+                      <div key={level} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full"
+                            style={{ backgroundColor: URGENCY_PALETTE[level] }}
+                          />
+                          <span className="text-[#243447] font-medium capitalize">
+                            {level.toLowerCase()}
+                          </span>
+                        </div>
+                        <span className="font-mono font-bold text-[#243447]">{count}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="pt-2 border-t border-[#E2E8F0] flex items-center justify-between text-xs text-[#64748B]">
+            <span>Total active patients: <strong>{activePatients.length}</strong></span>
+            <button
+              onClick={() => onNavigate("queue")}
+              className="text-[#1976D2] font-semibold hover:underline"
+            >
+              Open Queue →
+            </button>
+          </div>
+        </div>
+
+        {/* Right: Resource Availability Horizontal Progress Bars */}
+        <div className="lg:col-span-7 medical-card p-5 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-[#243447]">Resource Availability</h2>
               <button
-                onClick={() => onNavigate(alert.alertType === "CRITICAL_PATIENT" ? "queue" : "allocations")}
-                className="shrink-0 px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-200 font-semibold border border-slate-700/60 transition"
+                onClick={() => onNavigate("resources")}
+                className="text-xs font-semibold text-[#1976D2] hover:underline"
               >
-                Take Action
+                All Resources →
               </button>
             </div>
-          ))}
-        </div>
-      )}
-
-      {/* Main Visualizations Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* A. Urgency Distribution */}
-        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <h3 className="text-sm font-bold text-white">Patient Urgency Distribution</h3>
-              <p className="text-xs text-slate-400">Clinical breakdown of active patients</p>
-            </div>
+            <p className="text-xs text-[#64748B] mt-0.5">Real-time utilization and available units</p>
           </div>
 
-          {urgencyPieData.length === 0 ? (
-            <div className="h-48 flex items-center justify-center text-xs text-slate-400">
-              Not enough live data for this chart yet.
-            </div>
-          ) : (
-            <div className="h-52 flex items-center justify-between">
-              <div className="w-1/2 h-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={urgencyPieData}
-                      dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={45}
-                      outerRadius={70}
-                      paddingAngle={4}
-                    >
-                      {urgencyPieData.map((entry) => (
-                        <Cell key={entry.name} fill={URGENCY_COLORS[entry.name] || "#64748b"} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "#0f172a",
-                        border: "1px solid #334155",
-                        borderRadius: "8px",
-                        fontSize: "12px",
-                      }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-
-              <div className="w-1/2 space-y-2 pr-2">
-                {Object.entries(urgencyCounts).map(([level, count]) => (
-                  <div key={level} className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="w-2.5 h-2.5 rounded-full"
-                        style={{ backgroundColor: URGENCY_COLORS[level] }}
-                      />
-                      <span className="text-slate-300 font-medium">{level}</span>
-                    </div>
-                    <span className="font-mono text-slate-200 font-bold">{count}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* B. Resource Utilization */}
-        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">
-          <div className="mb-3">
-            <h3 className="text-sm font-bold text-white">Resource Utilization</h3>
-            <p className="text-xs text-slate-400">Percentage of active units assigned</p>
-          </div>
-
-          {resources.length === 0 ? (
-            <div className="h-48 flex items-center justify-center text-xs text-slate-400">
-              Not enough live data for this chart yet.
-            </div>
-          ) : (
-            <div className="space-y-2.5">
-              {[
-                { name: "General Beds", ...bedsUtil },
-                { name: "ICU Beds", ...icuUtil },
-                { name: "Operating Rooms", ...orUtil },
-                { name: "Doctors", ...docUtil },
-                { name: "Nurses", ...nurseUtil },
-                { name: "Ambulances", ...ambUtil },
-              ].map((res) => (
-                <div key={res.name} className="space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-300">{res.name}</span>
-                    <span className="font-mono text-slate-400">
-                      {res.occupied}/{res.total} ({res.pct}%)
-                    </span>
-                  </div>
-                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        res.pct > 85 ? "bg-red-500" : res.pct > 60 ? "bg-amber-500" : "bg-blue-500"
-                      }`}
-                      style={{ width: `${Math.min(res.pct, 100)}%` }}
-                    />
-                  </div>
+          <div className="my-4 space-y-3.5">
+            {resourceProgressItems.map((item) => (
+              <div key={item.label} className="space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-medium text-[#243447]">{item.label}</span>
+                  <span className="font-mono text-[11px] text-[#64748B]">
+                    <strong className="text-[#243447]">{item.available} available</strong> ({item.occupied}/{item.total} in use • {item.pct}%)
+                  </span>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* C. Patients by Disease / Clinical Category */}
-        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">
-          <div className="mb-2">
-            <h3 className="text-sm font-bold text-white">Patients by Clinical Category</h3>
-            <p className="text-xs text-slate-400">Categorized from verified records and WHO ICD suggestions</p>
-          </div>
-
-          {conditionBarData.length === 0 ? (
-            <div className="h-48 flex items-center justify-center text-xs text-slate-400">
-              Not enough live data for this chart yet.
-            </div>
-          ) : (
-            <div className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={conditionBarData} layout="vertical" margin={{ left: 20, right: 20, top: 10, bottom: 0 }}>
-                  <XAxis type="number" stroke="#64748b" fontSize={11} allowDecimals={false} />
-                  <YAxis type="category" dataKey="category" stroke="#64748b" fontSize={11} width={110} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#0f172a",
-                      border: "1px solid #334155",
-                      borderRadius: "8px",
-                      fontSize: "12px",
-                    }}
+                <div className="w-full bg-[#E2E8F0] h-2 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      item.pct > 85
+                        ? "bg-[#DC2626]"
+                        : item.pct > 65
+                        ? "bg-[#F59E0B]"
+                        : "bg-[#1976D2]"
+                    }`}
+                    style={{ width: `${Math.min(item.pct, 100)}%` }}
                   />
-                  <Bar dataKey="patients" fill="#3b82f6" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="pt-2 border-t border-[#E2E8F0] flex items-center justify-between text-xs text-[#64748B]">
+            <span>
+              ICU status:{" "}
+              <strong className={stats?.icuAvailable === 0 ? "text-[#DC2626]" : "text-[#16A34A]"}>
+                {stats?.icuAvailable ?? 0} beds open
+              </strong>
+            </span>
+            <span className="text-[#64748B]">Dynamic conflict prevention active</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ==================================================
+          THIRD ROW:
+          LEFT: Priority Queue (5 most important cases)
+          RIGHT: Operational Alerts (subtle alert colors)
+          ================================================== */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left: Priority Queue (5 cases) */}
+        <div className="lg:col-span-8 medical-card p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-bold text-[#243447]">Priority Queue</h2>
+              <p className="text-xs text-[#64748B]">Top cases requiring clinical attention</p>
+            </div>
+            <button
+              onClick={() => onNavigate("queue")}
+              className="text-xs font-semibold text-[#1976D2] hover:underline flex items-center gap-1"
+            >
+              <span>Full Queue ({waitingPatientsCount})</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {topQueuePatients.length === 0 ? (
+            <div className="py-12 text-center text-xs text-[#64748B]">
+              <CheckCircle2 className="w-8 h-8 text-[#16A34A] mx-auto mb-2" />
+              <p className="font-semibold text-[#243447]">No patients waiting</p>
+              <p className="text-[#64748B] mt-0.5">New patients will appear here when registered.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-[#E2E8F0] text-[#64748B] text-[11px] uppercase font-semibold">
+                    <th className="pb-2">Patient</th>
+                    <th className="pb-2">Priority</th>
+                    <th className="pb-2">Waiting</th>
+                    <th className="pb-2">Department</th>
+                    <th className="pb-2">Required Resource</th>
+                    <th className="pb-2 text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E2E8F0]">
+                  {topQueuePatients.map((patient) => (
+                    <tr
+                      key={patient.id}
+                      onClick={() => onNavigate("queue")}
+                      className="hover:bg-[#F8FAFC] transition cursor-pointer"
+                    >
+                      <td className="py-2.5 font-medium text-[#243447]">
+                        <div className="font-semibold">{patient.name}</div>
+                        <div className="text-[10px] text-[#64748B] font-mono">{patient.mrn}</div>
+                      </td>
+
+                      <td className="py-2.5">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
+                            patient.urgencyLevel === "CRITICAL"
+                              ? "bg-red-50 text-red-700 border border-red-200"
+                              : patient.urgencyLevel === "HIGH"
+                              ? "bg-amber-50 text-amber-700 border border-amber-200"
+                              : patient.urgencyLevel === "MODERATE"
+                              ? "bg-blue-50 text-blue-700 border border-blue-200"
+                              : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          }`}
+                        >
+                          {patient.urgencyLevel}
+                        </span>
+                      </td>
+
+                      <td className="py-2.5 font-mono text-[#64748B]">
+                        {patient.waitingMinutes} min
+                      </td>
+
+                      <td className="py-2.5 text-[#243447]">
+                        {patient.departmentName || "General"}
+                      </td>
+
+                      <td className="py-2.5 text-[#64748B] max-w-[140px] truncate">
+                        {patient.requiredTreatment}
+                      </td>
+
+                      <td className="py-2.5 text-right">
+                        <span className="text-[11px] font-semibold text-[#1976D2] bg-[#EAF4FF] px-2 py-0.5 rounded">
+                          {patient.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
 
-        {/* D. Waiting Time & Fairness Metrics */}
-        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-col justify-between">
+        {/* Right: Operational Alerts */}
+        <div className="lg:col-span-4 medical-card p-5 flex flex-col justify-between">
           <div>
-            <h3 className="text-sm font-bold text-white">Queue Waiting Time & Fairness</h3>
-            <p className="text-xs text-slate-400">Active wait tracking with aging enforcement</p>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-[#243447]">Operational Alerts</h2>
+              <span className="text-[11px] font-semibold text-[#64748B]">
+                {alerts.length} active
+              </span>
+            </div>
+            <p className="text-xs text-[#64748B] mt-0.5">Capacity and queue conditions</p>
           </div>
 
-          {waitingPatients.length === 0 ? (
-            <div className="h-48 flex items-center justify-center text-xs text-slate-400">
-              Zero patients waiting in queue currently.
-            </div>
-          ) : (
-            <div className="mt-4 grid grid-cols-3 gap-3">
-              <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 text-center">
-                <div className="text-[11px] text-slate-400 font-medium">Average Wait</div>
-                <div className="mt-1 text-xl font-bold font-mono text-white">{avgWait} min</div>
-                <div className="text-[10px] text-slate-400 mt-0.5">Across all queues</div>
+          <div className="my-3 space-y-2.5">
+            {alerts.length === 0 ? (
+              <div className="py-8 text-center text-xs text-[#64748B]">
+                <CheckCircle2 className="w-6 h-6 text-[#16A34A] mx-auto mb-1.5" />
+                <p className="font-semibold text-[#243447]">Normal operations</p>
+                <p className="text-[11px] text-[#64748B]">No operational alerts active.</p>
               </div>
-
-              <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 text-center">
-                <div className="text-[11px] text-slate-400 font-medium">Longest Wait</div>
-                <div className="mt-1 text-xl font-bold font-mono text-amber-400">
-                  {longestWaitPatient?.waitingMinutes ?? 0} min
-                </div>
-                <div className="text-[10px] text-slate-400 mt-0.5 truncate">
-                  {longestWaitPatient?.name || "None"}
-                </div>
-              </div>
-
-              <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 text-center">
-                <div className="text-[11px] text-slate-400 font-medium">Beyond Threshold</div>
+            ) : (
+              alerts.slice(0, 3).map((alert) => (
                 <div
-                  className={`mt-1 text-xl font-bold font-mono ${
-                    patientsOverThreshold > 0 ? "text-red-400" : "text-emerald-400"
+                  key={alert.id}
+                  className={`p-3 rounded-lg border text-xs leading-relaxed ${
+                    alert.severity === "CRITICAL"
+                      ? "bg-red-50/70 border-red-200 text-red-900"
+                      : "bg-amber-50/70 border-amber-200 text-amber-900"
                   }`}
                 >
-                  {patientsOverThreshold}
+                  <div className="flex items-center gap-1.5 font-semibold">
+                    <AlertTriangle
+                      className={`w-3.5 h-3.5 shrink-0 ${
+                        alert.severity === "CRITICAL" ? "text-red-600" : "text-amber-600"
+                      }`}
+                    />
+                    <span>{alert.title}</span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-[#243447]">{alert.message}</p>
                 </div>
-                <div className="text-[10px] text-slate-400 mt-0.5">{`> ${threshold} minutes`}</div>
-              </div>
-            </div>
-          )}
+              ))
+            )}
+          </div>
 
-          <div className="mt-4 p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
-            <span>Fairness Aging Rate: +{settings?.waitingAgingRatePer10Min || 5} pts / 10 min</span>
-            <span className="text-blue-400 font-semibold cursor-pointer hover:underline" onClick={() => onNavigate("settings")}>
-              Adjust Formula
-            </span>
+          <div className="pt-2 border-t border-[#E2E8F0]">
+            <button
+              onClick={() => onNavigate("queue")}
+              className="w-full py-1.5 rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] text-xs font-semibold text-[#243447] transition"
+            >
+              Review Queue & Resolve Alerts
+            </button>
           </div>
         </div>
       </div>

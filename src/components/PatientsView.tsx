@@ -9,13 +9,13 @@ import {
   Search,
   CheckCircle2,
   Stethoscope,
-  ChevronRight,
-  Info,
   X,
+  Users,
+  Activity,
+  HeartPulse,
 } from "lucide-react";
 import type {
   Patient,
-  PatientAssessment,
   UrgencyLevel,
   UserRole,
   Department,
@@ -24,7 +24,6 @@ import {
   createPatientApi,
   analyzePatientAi,
   confirmAssessmentApi,
-  searchIcdApi,
 } from "../api";
 
 interface PatientsViewProps {
@@ -70,12 +69,6 @@ export const PatientsView: React.FC<PatientsViewProps> = ({
   const [aiAssessment, setAiAssessment] = useState<any | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
 
-  // ICD search
-  const [icdQuery, setIcdQuery] = useState("");
-  const [icdResults, setIcdResults] = useState<any[]>([]);
-  const [selectedIcd, setSelectedIcd] = useState<any | null>(null);
-  const [isSearchingIcd, setIsSearchingIcd] = useState(false);
-
   // Form submission
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -106,7 +99,7 @@ export const PatientsView: React.FC<PatientsViewProps> = ({
   // Run AI Intake Analysis
   const handleRunAiAnalysis = async () => {
     if (!symptoms.trim()) {
-      setAiError("Please enter patient symptoms first to run AI triage.");
+      setAiError("Please describe patient symptoms first to run intake evaluation.");
       return;
     }
     setIsAnalyzing(true);
@@ -135,7 +128,6 @@ export const PatientsView: React.FC<PatientsViewProps> = ({
       const result = await analyzePatientAi(payload);
       setAiAssessment(result);
 
-      // Auto-populate treatment or department if recommended
       if (result.recommended_department && !selectedDeptId) {
         const match = departments.find((d) =>
           d.name.toLowerCase().includes(result.recommended_department.toLowerCase())
@@ -143,30 +135,14 @@ export const PatientsView: React.FC<PatientsViewProps> = ({
         if (match) setSelectedDeptId(match.id);
       }
       if (result.suggested_resources && result.suggested_resources.length > 0 && !requiredTreatment) {
-        setRequiredTreatment(result.suggested_resources.map((r: any) => `${r.resource_type}: ${r.reason}`).join("; "));
+        setRequiredTreatment(
+          result.suggested_resources.map((r: any) => `${r.resource_type}: ${r.reason}`).join("; ")
+        );
       }
     } catch (err: any) {
-      setAiError(err.message || "Failed to complete AI intake triage");
+      setAiError(err.message || "Failed to complete AI triage");
     } finally {
       setIsAnalyzing(false);
-    }
-  };
-
-  // ICD Search Handler
-  const handleSearchIcd = async (q: string) => {
-    setIcdQuery(q);
-    if (!q.trim()) {
-      setIcdResults([]);
-      return;
-    }
-    setIsSearchingIcd(true);
-    try {
-      const results = await searchIcdApi(q);
-      setIcdResults(results);
-    } catch {
-      setIcdResults([]);
-    } finally {
-      setIsSearchingIcd(false);
     }
   };
 
@@ -174,11 +150,11 @@ export const PatientsView: React.FC<PatientsViewProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
-      setSubmitError("Patient name is required.");
+      setSubmitError("Patient full name is required.");
       return;
     }
     if (!symptoms.trim()) {
-      setSubmitError("Primary symptoms are required.");
+      setSubmitError("Chief complaints / symptoms are required.");
       return;
     }
 
@@ -186,7 +162,8 @@ export const PatientsView: React.FC<PatientsViewProps> = ({
     setSubmitError(null);
 
     try {
-      const urgency: UrgencyLevel = aiAssessment?.urgency_level || (emergencyStatus ? "CRITICAL" : "MODERATE");
+      const urgency: UrgencyLevel =
+        aiAssessment?.urgency_level || (emergencyStatus ? "CRITICAL" : "MODERATE");
       const deptObj = departments.find((d) => d.id === selectedDeptId);
 
       const patientData: Partial<Patient> = {
@@ -219,7 +196,6 @@ export const PatientsView: React.FC<PatientsViewProps> = ({
 
       const newPatient = await createPatientApi(patientData);
 
-      // If AI assessment exists, save and link
       if (aiAssessment) {
         await analyzePatientAi({
           patientId: newPatient.id,
@@ -259,648 +235,536 @@ export const PatientsView: React.FC<PatientsViewProps> = ({
   const handleConfirmAssessment = async (assessmentId: string) => {
     try {
       await confirmAssessmentApi(assessmentId, currentUserName, currentRole);
+      alert("Assessment confirmed by clinical physician.");
       onPatientAdded();
-      if (viewingPatientModal) {
-        setViewingPatientModal(null);
-      }
     } catch (err: any) {
-      alert("Error confirming assessment: " + err.message);
+      alert("Failed to confirm assessment: " + err.message);
     }
   };
 
-  // Filtered Patients
+  // Filtered Patients List
   const filteredPatients = patients.filter((p) => {
     const matchesSearch =
       p.name.toLowerCase().includes(filterQuery.toLowerCase()) ||
       p.mrn.toLowerCase().includes(filterQuery.toLowerCase()) ||
-      p.symptoms.toLowerCase().includes(filterQuery.toLowerCase());
+      p.symptoms.toLowerCase().includes(filterQuery.toLowerCase()) ||
+      (p.departmentName && p.departmentName.toLowerCase().includes(filterQuery.toLowerCase()));
+
     const matchesUrgency = filterUrgency === "ALL" || p.urgencyLevel === filterUrgency;
     return matchesSearch && matchesUrgency;
   });
 
   return (
-    <div className="space-y-8 pb-12">
-      {/* Registration Form Header */}
-      <div>
-        <h2 className="text-lg font-bold text-white tracking-tight">Patient Intake & AI Triage</h2>
-        <p className="text-xs text-slate-400">
-          Register live patient, run structured Gemini clinical intake analysis, and insert into the deterministic queue.
+    <div className="space-y-6 pb-12">
+      {/* Top Header */}
+      <div className="border-b border-[#E2E8F0] pb-4">
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl sm:text-2xl font-bold text-[#243447] tracking-tight font-heading">
+            Patient Admissions & Roster
+          </h1>
+          <span className="text-xs font-semibold px-2 py-0.5 rounded bg-[#EAF4FF] text-[#1976D2]">
+            {patients.length} Registered Patients
+          </span>
+        </div>
+        <p className="text-xs text-[#64748B] mt-0.5">
+          Emergency intake triage, vital sign capture, electronic medical records, and bed assignment queue.
         </p>
       </div>
 
       {registeredPatient && (
-        <div className="p-4 rounded-xl bg-emerald-950/50 border border-emerald-800 text-emerald-200 text-xs flex items-center justify-between">
+        <div className="p-4 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
             <div>
-              <span className="font-semibold text-emerald-100">Patient {registeredPatient.name} registered:</span>{" "}
-              MRN {registeredPatient.mrn}, Urgency {registeredPatient.urgencyLevel}, Priority Score{" "}
-              {registeredPatient.priorityScore}. Successfully entered the Priority Queue.
+              <span className="font-bold">
+                Patient Registered Successfully: {registeredPatient.name}
+              </span>{" "}
+              (MRN: {registeredPatient.mrn} • Urgency: {registeredPatient.urgencyLevel})
             </div>
           </div>
           <button
             onClick={() => setRegisteredPatient(null)}
-            className="text-xs px-2.5 py-1 rounded bg-emerald-900/60 hover:bg-emerald-800 text-emerald-100 border border-emerald-700/60"
+            className="text-xs font-semibold text-emerald-800 hover:underline"
           >
             Dismiss
           </button>
         </div>
       )}
 
-      {/* Main Registration Form Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left 2 Cols: Form */}
-        <div className="lg:col-span-2 space-y-5">
-          <form onSubmit={handleSubmit} className="p-5 rounded-xl bg-slate-900 border border-slate-800 space-y-4">
-            <div className="text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800 pb-2 flex items-center justify-between">
-              <span>Patient Demographics & Arrival</span>
-              <span className="text-[11px] font-normal text-slate-400">All fields persist to live database</span>
+      {/* Main Grid: Registration Form (Left) & Active Roster (Right) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Admission Form */}
+        <div className="lg:col-span-6 medical-card p-5 space-y-4">
+          <div className="border-b border-[#E2E8F0] pb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <UserPlus className="w-4 h-4 text-[#1976D2]" />
+              <h2 className="text-sm font-bold text-[#243447]">New Patient Admission & Intake</h2>
             </div>
+            <span className="text-[11px] text-[#64748B]">OPD / Emergency Intake</span>
+          </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Full Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Ramesh Kulkarni"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-hidden focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Age *</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="125"
-                  required
-                  placeholder="e.g. 54"
-                  value={age}
-                  onChange={(e) => setAge(e.target.value === "" ? "" : Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-hidden focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Gender</label>
-                <select
-                  value={gender}
-                  onChange={(e) => setGender(e.target.value as any)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-hidden focus:border-blue-500"
-                >
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
+          {submitError && (
+            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-800 text-xs flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
+              <span>{submitError}</span>
             </div>
+          )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Contact / Next of Kin</label>
-                <input
-                  type="text"
-                  placeholder="e.g. +91 98450 12345 (Son)"
-                  value={contact}
-                  onChange={(e) => setContact(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-hidden focus:border-blue-500"
-                />
+          <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+            {/* Demographics */}
+            <div className="space-y-2">
+              <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">
+                1. Patient Demographics
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-[#243447] mb-1">Full Name *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Ramesh Kumar"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2 text-xs text-[#243447] focus:outline-none focus:border-[#1976D2] focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-[#243447] mb-1">Contact Phone</label>
+                  <input
+                    type="tel"
+                    placeholder="+91 98765 43210"
+                    value={contact}
+                    onChange={(e) => setContact(e.target.value)}
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2 text-xs text-[#243447] focus:outline-none focus:border-[#1976D2] focus:bg-white"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Target Department</label>
-                <select
-                  value={selectedDeptId}
-                  onChange={(e) => setSelectedDeptId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-hidden focus:border-blue-500"
-                >
-                  <option value="">Auto-Assign by Triage</option>
-                  {departments.map((dept) => (
-                    <option key={dept.id} value={dept.id}>
-                      {dept.name} ({dept.code})
-                    </option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-[#243447] mb-1">Age</label>
+                  <input
+                    type="number"
+                    placeholder="e.g. 52"
+                    value={age}
+                    onChange={(e) => setAge(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2 text-xs text-[#243447]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-[#243447] mb-1">Gender</label>
+                  <select
+                    value={gender}
+                    onChange={(e: any) => setGender(e.target.value)}
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2 text-xs text-[#243447]"
+                  >
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
               </div>
             </div>
 
-            {/* Symptoms & Clinical Notes */}
-            <div className="space-y-3 pt-2">
+            {/* Clinical Symptoms */}
+            <div className="space-y-2 pt-2 border-t border-[#E2E8F0]">
+              <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">
+                2. Symptoms & Clinical Evaluation
+              </h3>
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Presenting Symptoms / Chief Complaint *
+                <label className="block font-semibold text-[#243447] mb-1">
+                  Primary Symptoms / Chief Complaint *
                 </label>
                 <textarea
                   rows={2}
                   required
-                  placeholder="e.g. Acute substernal chest pressure radiating to left arm, diaphoresis, onset 45 minutes ago."
+                  placeholder="e.g. Acute severe chest pain radiating to left arm, shortness of breath, diaphoresis for 45 minutes"
                   value={symptoms}
                   onChange={(e) => setSymptoms(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-hidden focus:border-blue-500 leading-relaxed"
+                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2 text-xs text-[#243447] focus:outline-none focus:border-[#1976D2] focus:bg-white"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Clinical Notes (Optional)</label>
-                <textarea
-                  rows={2}
-                  placeholder="e.g. Patient is pale, clutching chest. History of hypertension and coronary artery disease."
-                  value={clinicalNotes}
-                  onChange={(e) => setClinicalNotes(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-hidden focus:border-blue-500 leading-relaxed"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-[#243447] mb-1">Admitting Department</label>
+                  <select
+                    value={selectedDeptId}
+                    onChange={(e) => setSelectedDeptId(e.target.value)}
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2 text-xs text-[#243447]"
+                  >
+                    <option value="">General Facility</option>
+                    {departments.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-[#243447] mb-1">Required Treatment</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Emergency Cardiac Catheterization"
+                    value={requiredTreatment}
+                    onChange={(e) => setRequiredTreatment(e.target.value)}
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-2 text-xs text-[#243447]"
+                  />
+                </div>
               </div>
             </div>
 
-            {/* Vital Signs Grid */}
-            <div className="pt-2">
-              <div className="text-xs font-semibold text-slate-300 mb-2 flex items-center justify-between">
-                <span>Vital Signs (Clinical Risk Factor Inputs)</span>
-                <span className="text-[11px] text-slate-400">Used by deterministic risk scoring</span>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+            {/* Vital Signs */}
+            <div className="space-y-2 pt-2 border-t border-[#E2E8F0]">
+              <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">
+                3. Triage Vital Signs
+              </h3>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                 <div>
-                  <label className="block text-[11px] text-slate-400 mb-0.5">Heart Rate (bpm)</label>
+                  <label className="block text-[10px] text-[#64748B] mb-0.5">Heart Rate (bpm)</label>
                   <input
                     type="number"
-                    placeholder="75"
+                    placeholder="78"
                     value={heartRate}
                     onChange={(e) => setHeartRate(e.target.value === "" ? "" : Number(e.target.value))}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs font-mono"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded p-1.5 text-xs text-[#243447]"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-[11px] text-slate-400 mb-0.5">BP Systolic</label>
+                  <label className="block text-[10px] text-[#64748B] mb-0.5">Systolic BP</label>
                   <input
                     type="number"
                     placeholder="120"
                     value={bpSystolic}
                     onChange={(e) => setBpSystolic(e.target.value === "" ? "" : Number(e.target.value))}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs font-mono"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded p-1.5 text-xs text-[#243447]"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-[11px] text-slate-400 mb-0.5">BP Diastolic</label>
-                  <input
-                    type="number"
-                    placeholder="80"
-                    value={bpDiastolic}
-                    onChange={(e) => setBpDiastolic(e.target.value === "" ? "" : Number(e.target.value))}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] text-slate-400 mb-0.5">SpO2 (%)</label>
+                  <label className="block text-[10px] text-[#64748B] mb-0.5">SpO2 (%)</label>
                   <input
                     type="number"
                     placeholder="98"
                     value={spo2}
                     onChange={(e) => setSpo2(e.target.value === "" ? "" : Number(e.target.value))}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs font-mono"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded p-1.5 text-xs text-[#243447]"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-[11px] text-slate-400 mb-0.5">Resp Rate (/min)</label>
-                  <input
-                    type="number"
-                    placeholder="16"
-                    value={respRate}
-                    onChange={(e) => setRespRate(e.target.value === "" ? "" : Number(e.target.value))}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] text-slate-400 mb-0.5">Temp (°C)</label>
+                  <label className="block text-[10px] text-[#64748B] mb-0.5">Temp (°C)</label>
                   <input
                     type="number"
                     step="0.1"
-                    placeholder="36.8"
+                    placeholder="37.0"
                     value={tempC}
                     onChange={(e) => setTempC(e.target.value === "" ? "" : Number(e.target.value))}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs font-mono"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded p-1.5 text-xs text-[#243447]"
                   />
                 </div>
               </div>
             </div>
 
-            {/* Background Medical History */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Known Conditions (comma separated)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Diabetes Type 2, Hypertension"
-                  value={knownConditions}
-                  onChange={(e) => setKnownConditions(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Allergies (comma separated)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Penicillin, NSAIDs"
-                  value={allergies}
-                  onChange={(e) => setAllergies(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs"
-                />
-              </div>
-            </div>
-
-            {/* Document Upload & Emergency Status Toggle */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 items-center">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Attach Medical Document / ECG / Referral
-                </label>
-                <div className="flex items-center gap-2">
-                  <label className="cursor-pointer px-3 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-850 border border-slate-800 text-slate-300 text-xs flex items-center gap-2 transition">
-                    <UploadCloud className="w-4 h-4 text-blue-400" />
-                    <span>{docFile ? "Replace Document" : "Upload File / Image"}</span>
-                    <input
-                      type="file"
-                      accept="image/*,.pdf,.txt"
-                      onChange={handleFileUpload}
-                      className="hidden"
-                    />
-                  </label>
-                  {docFile && (
-                    <span className="text-xs text-slate-400 truncate max-w-xs">{docFile.name}</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 pt-4 sm:pt-0">
-                <input
-                  type="checkbox"
-                  id="emergency-status-check"
-                  checked={emergencyStatus}
-                  onChange={(e) => setEmergencyStatus(e.target.checked)}
-                  className="w-4 h-4 rounded bg-slate-950 border-slate-800 text-red-600 focus:ring-red-500"
-                />
-                <label htmlFor="emergency-status-check" className="text-xs font-semibold text-slate-200 cursor-pointer">
-                  Code Red / Emergency Status (Direct Trauma / Resuscitation)
+            {/* Document Upload & AI Assist button */}
+            <div className="space-y-2 pt-2 border-t border-[#E2E8F0]">
+              <div className="flex items-center justify-between">
+                <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">
+                  4. Clinical Intake Assistance
+                </h3>
+                <label className="cursor-pointer text-[11px] text-[#1976D2] hover:underline flex items-center gap-1">
+                  <UploadCloud className="w-3.5 h-3.5" />
+                  <span>{docFile ? docFile.name : "Attach Report / ECG"}</span>
+                  <input
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg,.txt"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
                 </label>
               </div>
-            </div>
 
-            {submitError && (
-              <div className="p-3 rounded-lg bg-red-950/50 border border-red-900 text-red-300 text-xs">
-                {submitError}
-              </div>
-            )}
-
-            {/* Actions: AI Intake & Submit */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-800">
+              {/* Quiet AI Assist Trigger */}
               <button
                 type="button"
-                id="run-ai-triage-btn"
                 onClick={handleRunAiAnalysis}
-                disabled={isAnalyzing}
-                className="px-3.5 py-2 rounded-lg bg-indigo-900/60 hover:bg-indigo-800 text-indigo-200 border border-indigo-700/60 text-xs font-semibold flex items-center gap-2 transition disabled:opacity-50"
+                disabled={isAnalyzing || !symptoms.trim()}
+                className="w-full py-2 rounded-lg bg-[#EAF4FF] hover:bg-[#dbeafe] text-[#1976D2] font-semibold text-xs flex items-center justify-center gap-2 border border-[#1976D2]/30 transition disabled:opacity-50"
               >
-                <Sparkles className="w-4 h-4 text-indigo-400" />
-                <span>{isAnalyzing ? "Gemini Evaluating Intake..." : "Run AI Intake Analysis"}</span>
+                <Sparkles className="w-4 h-4" />
+                <span>
+                  {isAnalyzing
+                    ? "Evaluating clinical indicators..."
+                    : "Generate AI-Assisted Intake Assessment"}
+                </span>
               </button>
+
+              {aiError && (
+                <p className="text-[11px] text-[#DC2626]">{aiError}</p>
+              )}
+
+              {/* AI Assessment Result in Medical Record style */}
+              {aiAssessment && (
+                <div className="p-3.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-[#243447] flex items-center gap-1.5">
+                      <Stethoscope className="w-3.5 h-3.5 text-[#1976D2]" />
+                      <span>AI-Assisted Assessment</span>
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        aiAssessment.urgency_level === "CRITICAL"
+                          ? "bg-red-50 text-red-700 border border-red-200"
+                          : aiAssessment.urgency_level === "HIGH"
+                          ? "bg-amber-50 text-amber-700 border border-amber-200"
+                          : "bg-blue-50 text-blue-700 border border-blue-200"
+                      }`}
+                    >
+                      {aiAssessment.urgency_level}
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-[#243447] leading-relaxed">
+                    {aiAssessment.clinical_rationale || aiAssessment.assessment_summary}
+                  </p>
+
+                  <div className="text-[10px] text-[#64748B] italic pt-1 border-t border-[#E2E8F0]">
+                    AI-assisted assessment requires clinical review.
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Submit Button */}
+            <div className="pt-3 border-t border-[#E2E8F0] flex items-center justify-between">
+              <label className="flex items-center gap-2 text-xs font-semibold text-[#DC2626] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={emergencyStatus}
+                  onChange={(e) => setEmergencyStatus(e.target.checked)}
+                  className="rounded border-[#DC2626] text-[#DC2626] focus:ring-red-500"
+                />
+                <span>Direct Emergency Alert</span>
+              </label>
 
               <button
                 type="submit"
-                id="register-patient-btn"
                 disabled={isSubmitting}
-                className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md transition disabled:opacity-50 flex items-center gap-2"
+                className="px-5 py-2 rounded-lg bg-[#1976D2] hover:bg-[#1565C0] text-white text-xs font-semibold shadow-xs transition disabled:opacity-50"
               >
-                <UserPlus className="w-4 h-4" />
-                <span>{isSubmitting ? "Registering..." : "Register & Add to Queue"}</span>
+                {isSubmitting ? "Registering..." : "Admit & Queue Patient"}
               </button>
             </div>
           </form>
         </div>
 
-        {/* Right Col: Structured AI Triage Card & WHO ICD Search */}
-        <div className="space-y-4">
-          {/* Gemini AI Assessment Panel */}
-          <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+        {/* Patients Roster List */}
+        <div className="lg:col-span-6 space-y-4">
+          <div className="medical-card p-4 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-indigo-400" />
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider">AI Intake Triage</h3>
+                <Users className="w-4 h-4 text-[#1976D2]" />
+                <h2 className="text-sm font-bold text-[#243447]">Active Hospital Census</h2>
               </div>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-950 border border-indigo-800 text-indigo-300">
-                Gemini 3.8
-              </span>
-            </div>
 
-            {aiError && (
-              <div className="p-2.5 rounded-lg bg-red-950/40 border border-red-900/60 text-red-200 text-xs">
-                {aiError}
-              </div>
-            )}
-
-            {!aiAssessment ? (
-              <div className="py-8 text-center text-xs text-slate-400 space-y-2">
-                <Info className="w-6 h-6 text-slate-400 mx-auto" />
-                <p>Fill symptoms and click &ldquo;Run AI Intake Analysis&rdquo; to receive structured triage, red flag detection, and resource recommendations.</p>
-              </div>
-            ) : (
-              <div className="space-y-3 text-xs">
-                {/* Urgency & Confidence */}
-                <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-950 border border-slate-800">
-                  <div>
-                    <span className="text-[11px] text-slate-400">Assessed Urgency:</span>
-                    <div className="text-sm font-bold text-white mt-0.5">{aiAssessment.urgency_level}</div>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-[11px] text-slate-400">Confidence:</span>
-                    <div className="text-xs font-mono font-bold text-indigo-300 mt-0.5">
-                      {Math.round(aiAssessment.confidence * 100)}%
-                    </div>
-                  </div>
-                </div>
-
-                {/* Red Flags */}
-                {aiAssessment.red_flags && aiAssessment.red_flags.length > 0 && (
-                  <div className="p-2.5 rounded-lg bg-red-950/30 border border-red-900/50 text-red-200 space-y-1">
-                    <div className="font-semibold flex items-center gap-1.5 text-red-300">
-                      <AlertTriangle className="w-3.5 h-3.5" />
-                      <span>Clinical Red Flags</span>
-                    </div>
-                    <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-red-300/90">
-                      {aiAssessment.red_flags.map((flag: string, idx: number) => (
-                        <li key={idx}>{flag}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Possible Conditions */}
-                {aiAssessment.possible_conditions && aiAssessment.possible_conditions.length > 0 && (
-                  <div>
-                    <span className="font-semibold text-slate-300 block mb-1">Provisional Conditions:</span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {aiAssessment.possible_conditions.map((cond: string, idx: number) => (
-                        <span
-                          key={idx}
-                          className="px-2 py-0.5 rounded bg-slate-850 text-slate-300 border border-slate-750 text-[11px]"
-                        >
-                          {cond}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Suggested Resources */}
-                {aiAssessment.suggested_resources && aiAssessment.suggested_resources.length > 0 && (
-                  <div>
-                    <span className="font-semibold text-slate-300 block mb-1">Recommended Resources:</span>
-                    <div className="space-y-1">
-                      {aiAssessment.suggested_resources.map((res: any, idx: number) => (
-                        <div
-                          key={idx}
-                          className="p-1.5 rounded bg-slate-950 border border-slate-800 text-[11px] text-slate-300 flex items-center justify-between"
-                        >
-                          <span className="font-semibold text-blue-300">
-                            {res.quantity}x {res.resource_type}
-                          </span>
-                          <span className="text-slate-400 text-[10px] truncate max-w-xs">{res.reason}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Mandatory Disclaimer */}
-                <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 text-[11px] text-slate-400 leading-relaxed italic">
-                  &ldquo;AI-assisted assessment — final clinical decisions must be made by authorized medical staff.&rdquo;
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* WHO ICD Search Card */}
-          <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
               <div className="flex items-center gap-2">
-                <Search className="w-4 h-4 text-blue-400" />
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider">WHO ICD Taxonomy</h3>
-              </div>
-              <span className="text-[10px] text-slate-400">ICD-10 / ICD-11</span>
-            </div>
-
-            <input
-              type="text"
-              placeholder="Search condition (e.g. Infarction, Sepsis, Fracture)..."
-              value={icdQuery}
-              onChange={(e) => handleSearchIcd(e.target.value)}
-              className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-hidden focus:border-blue-500"
-            />
-
-            {isSearchingIcd && <div className="text-[11px] text-slate-400">Searching WHO index...</div>}
-
-            <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
-              {icdResults.map((item) => (
-                <div
-                  key={item.code}
-                  onClick={() => {
-                    setSelectedIcd(item);
-                    if (!knownConditions.includes(item.title)) {
-                      setKnownConditions(
-                        knownConditions ? `${knownConditions}, ${item.title}` : item.title
-                      );
-                    }
-                  }}
-                  className="p-2 rounded-lg bg-slate-950 hover:bg-slate-850 border border-slate-800 cursor-pointer text-xs transition"
+                <select
+                  value={filterUrgency}
+                  onChange={(e) => setFilterUrgency(e.target.value)}
+                  className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-2.5 py-1 text-xs text-[#243447]"
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-blue-400 font-bold">{item.code}</span>
-                    <span className="text-[10px] text-slate-400">{item.category}</span>
-                  </div>
-                  <div className="text-slate-200 mt-0.5 text-[11px] line-clamp-1">{item.title}</div>
-                </div>
-              ))}
+                  <option value="ALL">All Urgencies</option>
+                  <option value="CRITICAL">Critical</option>
+                  <option value="HIGH">High</option>
+                  <option value="MODERATE">Moderate</option>
+                  <option value="LOW">Low</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-[#94A3B8] absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search patient name, MRN, diagnosis..."
+                value={filterQuery}
+                onChange={(e) => setFilterQuery(e.target.value)}
+                className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg pl-8 pr-3 py-1.5 text-xs text-[#243447] placeholder-[#94A3B8]"
+              />
+            </div>
+
+            {/* Patients List Table */}
+            <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-[#E2E8F0] text-[#64748B] text-[11px] uppercase font-semibold">
+                    <th className="pb-2">Patient</th>
+                    <th className="pb-2">Urgency</th>
+                    <th className="pb-2">Department</th>
+                    <th className="pb-2">Status</th>
+                    <th className="pb-2 text-right">Details</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E2E8F0]">
+                  {filteredPatients.map((patient) => (
+                    <tr
+                      key={patient.id}
+                      onClick={() => setViewingPatientModal(patient)}
+                      className="hover:bg-[#F8FAFC] transition cursor-pointer"
+                    >
+                      <td className="py-2.5">
+                        <div className="font-semibold text-[#243447]">{patient.name}</div>
+                        <div className="text-[10px] text-[#64748B] font-mono">
+                          {patient.mrn} • {patient.age}y {patient.gender[0]}
+                        </div>
+                      </td>
+
+                      <td className="py-2.5">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
+                            patient.urgencyLevel === "CRITICAL"
+                              ? "bg-red-50 text-red-700 border border-red-200"
+                              : patient.urgencyLevel === "HIGH"
+                              ? "bg-amber-50 text-amber-700 border border-amber-200"
+                              : patient.urgencyLevel === "MODERATE"
+                              ? "bg-blue-50 text-blue-700 border border-blue-200"
+                              : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          }`}
+                        >
+                          {patient.urgencyLevel}
+                        </span>
+                      </td>
+
+                      <td className="py-2.5 text-[#64748B]">
+                        {patient.departmentName || "General"}
+                      </td>
+
+                      <td className="py-2.5">
+                        <span className="text-[11px] font-semibold text-[#1976D2]">
+                          {patient.status}
+                        </span>
+                      </td>
+
+                      <td className="py-2.5 text-right">
+                        <span className="text-xs font-semibold text-[#1976D2] hover:underline">
+                          Inspect →
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Registered Patients Directory */}
-      <div className="p-5 rounded-xl bg-slate-900 border border-slate-800 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
-          <div>
-            <h3 className="text-sm font-bold text-white">Registered Patient Directory</h3>
-            <p className="text-xs text-slate-400">All live records currently in database</p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              placeholder="Search by name, MRN, symptoms..."
-              value={filterQuery}
-              onChange={(e) => setFilterQuery(e.target.value)}
-              className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 text-xs w-56"
-            />
-            <select
-              value={filterUrgency}
-              onChange={(e) => setFilterUrgency(e.target.value)}
-              className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 text-xs"
-            >
-              <option value="ALL">All Urgencies</option>
-              <option value="CRITICAL">Critical</option>
-              <option value="HIGH">High</option>
-              <option value="MODERATE">Moderate</option>
-              <option value="LOW">Low</option>
-            </select>
-          </div>
-        </div>
-
-        {patients.length === 0 ? (
-          <div className="py-12 text-center text-xs text-slate-400">
-            No patients registered yet. Register the first patient above to begin operations.
-          </div>
-        ) : filteredPatients.length === 0 ? (
-          <div className="py-8 text-center text-xs text-slate-400">
-            No patients match the specified filter.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-300">
-              <thead className="bg-slate-950 text-slate-400 uppercase font-semibold text-[11px] border-b border-slate-800">
-                <tr>
-                  <th className="px-3 py-2.5">MRN</th>
-                  <th className="px-3 py-2.5">Patient Name</th>
-                  <th className="px-3 py-2.5">Age/Gen</th>
-                  <th className="px-3 py-2.5">Urgency</th>
-                  <th className="px-3 py-2.5">Symptoms</th>
-                  <th className="px-3 py-2.5">Status</th>
-                  <th className="px-3 py-2.5 text-right">Details</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800">
-                {filteredPatients.map((patient) => (
-                  <tr key={patient.id} className="hover:bg-slate-850/50 transition">
-                    <td className="px-3 py-2.5 font-mono text-blue-400 font-medium">{patient.mrn}</td>
-                    <td className="px-3 py-2.5 font-semibold text-slate-100">{patient.name}</td>
-                    <td className="px-3 py-2.5 text-slate-400">
-                      {patient.age}y / {patient.gender[0]}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          patient.urgencyLevel === "CRITICAL"
-                            ? "bg-red-950 text-red-300 border border-red-800"
-                            : patient.urgencyLevel === "HIGH"
-                            ? "bg-orange-950 text-orange-300 border border-orange-800"
-                            : patient.urgencyLevel === "MODERATE"
-                            ? "bg-amber-950 text-amber-300 border border-amber-800"
-                            : "bg-blue-950 text-blue-300 border border-blue-800"
-                        }`}
-                      >
-                        {patient.urgencyLevel}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 text-slate-300 max-w-xs truncate">{patient.symptoms}</td>
-                    <td className="px-3 py-2.5">
-                      <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-300">
-                        {patient.status}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 text-right">
-                      <button
-                        onClick={() => setViewingPatientModal(patient)}
-                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
-                      >
-                        View Assessment
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Patient Assessment Modal */}
+      {/* Patient Record Modal */}
       {viewingPatientModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-2xl w-full p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-2xs flex items-center justify-center p-4">
+          <div className="bg-white border border-[#E2E8F0] rounded-xl max-w-lg w-full p-5 shadow-xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E2E8F0]">
               <div>
-                <h3 className="text-sm font-bold text-white">
-                  Clinical Record: {viewingPatientModal.name} ({viewingPatientModal.mrn})
+                <h3 className="text-base font-bold text-[#243447]">
+                  {viewingPatientModal.name}
                 </h3>
-                <p className="text-xs text-slate-400">
-                  Arrival: {new Date(viewingPatientModal.arrivalTime).toLocaleTimeString()} • Priority Score:{" "}
-                  {viewingPatientModal.priorityScore}
+                <p className="text-xs text-[#64748B] font-mono">
+                  MRN: {viewingPatientModal.mrn} • Age: {viewingPatientModal.age} • {viewingPatientModal.gender}
                 </p>
               </div>
               <button
                 onClick={() => setViewingPatientModal(null)}
-                className="p-1 text-slate-400 hover:text-slate-200 rounded"
+                className="p-1 text-[#64748B] hover:text-[#243447] rounded"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-3 text-xs">
-              <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
-                <span className="font-semibold text-slate-300 block mb-1">Symptoms & Clinical Notes:</span>
-                <p className="text-slate-300 leading-relaxed">{viewingPatientModal.symptoms}</p>
-                {viewingPatientModal.clinicalNotes && (
-                  <p className="text-slate-400 mt-1 italic">{viewingPatientModal.clinicalNotes}</p>
-                )}
+              <div className="p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] space-y-1">
+                <div className="font-semibold text-[#243447]">Symptoms / Chief Complaint:</div>
+                <p className="text-[#64748B] leading-relaxed">{viewingPatientModal.symptoms}</p>
               </div>
 
-              {viewingPatientModal.assessment && (
-                <div className="p-3 rounded-lg bg-indigo-950/30 border border-indigo-900/60 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-indigo-300">Gemini Intake Assessment</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-900 text-indigo-200">
-                      {viewingPatientModal.assessment.staffConfirmed ? "Clinically Confirmed" : "Pending Confirmation"}
-                    </span>
+              {viewingPatientModal.vitalSigns && (
+                <div>
+                  <div className="font-semibold text-[#243447] mb-1">Vital Signs:</div>
+                  <div className="grid grid-cols-4 gap-2 text-center text-[11px]">
+                    <div className="bg-[#F8FAFC] p-1.5 rounded border border-[#E2E8F0]">
+                      <div className="text-[10px] text-[#64748B]">Heart Rate</div>
+                      <div className="font-bold">
+                        {viewingPatientModal.vitalSigns.heartRate
+                          ? `${viewingPatientModal.vitalSigns.heartRate} bpm`
+                          : "—"}
+                      </div>
+                    </div>
+                    <div className="bg-[#F8FAFC] p-1.5 rounded border border-[#E2E8F0]">
+                      <div className="text-[10px] text-[#64748B]">Blood Pressure</div>
+                      <div className="font-bold">
+                        {viewingPatientModal.vitalSigns.bloodPressureSystolic &&
+                        viewingPatientModal.vitalSigns.bloodPressureDiastolic
+                          ? `${viewingPatientModal.vitalSigns.bloodPressureSystolic}/${viewingPatientModal.vitalSigns.bloodPressureDiastolic}`
+                          : "—"}
+                      </div>
+                    </div>
+                    <div className="bg-[#F8FAFC] p-1.5 rounded border border-[#E2E8F0]">
+                      <div className="text-[10px] text-[#64748B]">SpO2</div>
+                      <div className="font-bold">
+                        {viewingPatientModal.vitalSigns.oxygenSaturation
+                          ? `${viewingPatientModal.vitalSigns.oxygenSaturation}%`
+                          : "—"}
+                      </div>
+                    </div>
+                    <div className="bg-[#F8FAFC] p-1.5 rounded border border-[#E2E8F0]">
+                      <div className="text-[10px] text-[#64748B]">Temp</div>
+                      <div className="font-bold">
+                        {viewingPatientModal.vitalSigns.temperatureCelsius
+                          ? `${viewingPatientModal.vitalSigns.temperatureCelsius}°C`
+                          : "—"}
+                      </div>
+                    </div>
                   </div>
-
-                  <div className="text-slate-300">
-                    Urgency: <span className="font-bold">{viewingPatientModal.assessment.urgency_level}</span> (
-                    {Math.round(viewingPatientModal.assessment.confidence * 100)}% confidence)
-                  </div>
-
-                  {viewingPatientModal.assessment.red_flags.length > 0 && (
-                    <div className="text-red-300">
-                      Red Flags: {viewingPatientModal.assessment.red_flags.join(", ")}
-                    </div>
-                  )}
-
-                  {viewingPatientModal.assessment.suggested_resources.length > 0 && (
-                    <div className="text-slate-300">
-                      Suggested Resources:{" "}
-                      {viewingPatientModal.assessment.suggested_resources
-                        .map((r) => `${r.quantity}x ${r.resource_type} (${r.reason})`)
-                        .join("; ")}
-                    </div>
-                  )}
-
-                  {!viewingPatientModal.assessment.staffConfirmed && (
-                    <div className="pt-2">
-                      <button
-                        onClick={() => handleConfirmAssessment(viewingPatientModal.assessment!.id)}
-                        className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold flex items-center gap-1.5 transition"
-                      >
-                        <ShieldCheck className="w-4 h-4" />
-                        <span>Confirm Triage as {currentUserName} ({currentRole})</span>
-                      </button>
-                    </div>
-                  )}
                 </div>
               )}
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="p-2.5 rounded bg-[#F8FAFC] border border-[#E2E8F0]">
+                  <span className="text-[#64748B] block text-[10px]">Current Status</span>
+                  <strong className="text-[#1976D2]">{viewingPatientModal.status}</strong>
+                </div>
+                <div className="p-2.5 rounded bg-[#F8FAFC] border border-[#E2E8F0]">
+                  <span className="text-[#64748B] block text-[10px]">Priority Score</span>
+                  <strong className="text-[#243447]">{viewingPatientModal.priorityScore} pts</strong>
+                </div>
+              </div>
+
+              {/* Assessment review */}
+              {viewingPatientModal.assessment && (
+                <div className="p-3 rounded-lg bg-[#EAF4FF] border border-[#1976D2]/20 space-y-1">
+                  <div className="font-semibold text-[#1976D2]">
+                    Clinical Assessment ({viewingPatientModal.assessment.possible_conditions?.join(", ") || "Evaluated"})
+                  </div>
+                  <p className="text-[11px] text-[#243447]">
+                    {viewingPatientModal.assessment.clinicalNotes || viewingPatientModal.clinicalNotes}
+                  </p>
+                  <div className="text-[10px] text-[#64748B] italic pt-1">
+                    AI-assisted assessment requires clinical review.
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-[#E2E8F0] flex justify-end">
+              <button
+                onClick={() => setViewingPatientModal(null)}
+                className="px-4 py-2 rounded-lg bg-[#1976D2] text-white text-xs font-semibold"
+              >
+                Close Record
+              </button>
             </div>
           </div>
         </div>

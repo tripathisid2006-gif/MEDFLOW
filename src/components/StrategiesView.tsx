@@ -22,15 +22,12 @@ interface StrategiesViewProps {
 }
 
 export const StrategiesView: React.FC<StrategiesViewProps> = ({
-  patients,
-  resources,
   activeStrategy,
   currentRole,
   currentUserName,
   onRefresh,
 }) => {
   const [comparisonResults, setComparisonResults] = useState<any[] | null>(null);
-  const [selectedStrategyToApply, setSelectedStrategyToApply] = useState<AllocationStrategy>(activeStrategy);
   const [isRunning, setIsRunning] = useState(false);
   const [appliedMsg, setAppliedMsg] = useState<string | null>(null);
 
@@ -54,8 +51,9 @@ export const StrategiesView: React.FC<StrategiesViewProps> = ({
         `${currentUserName} (${currentRole})`,
         currentRole
       );
-      setSelectedStrategyToApply(strategy);
-      setAppliedMsg(`Strategy successfully updated to ${strategy}. Priority scores and queue ranks have re-indexed.`);
+      setAppliedMsg(
+        `Allocation strategy updated to ${strategy}. Priority scores and queue ranks have re-indexed.`
+      );
       onRefresh();
     } catch (err: any) {
       alert("Failed to update active strategy: " + err.message);
@@ -65,160 +63,168 @@ export const StrategiesView: React.FC<StrategiesViewProps> = ({
   const strategyDescriptions: Record<string, { name: string; tag: string; desc: string }> = {
     PRIORITY_FIRST: {
       name: "Strategy A: Critical Urgency First (Default)",
-      tag: "Maximum Survival Rate",
-      desc: "Strict triage urgency hierarchy. Critical and high-risk patients are immediately allocated life-saving resources, with anti-starvation aging to prevent lower-urgency neglect.",
+      tag: "Maximum Clinical Safety",
+      desc: "Strict clinical urgency hierarchy. Critical and high-risk patients are immediately allocated resources with waiting-time anti-starvation aging.",
     },
     FIRST_COME_FIRST_SERVED: {
       name: "Strategy B: First-Come First-Served (FCFS)",
-      tag: "Pure Chronological Fairness",
-      desc: "Strict queue discipline ordered entirely by arrival timestamp. Eliminates subjective bias but presents unacceptable mortality risk for sudden critical deterioration.",
+      tag: "Chronological Fairness",
+      desc: "Queue ordered strictly by arrival timestamp. Eliminates order bias but presents unacceptable safety delays for sudden acute emergencies.",
     },
     SHORTEST_TREATMENT_FIRST: {
       name: "Strategy C: Shortest Expected Treatment",
-      tag: "Maximum Patient Throughput",
-      desc: "Prioritizes cases with the fastest anticipated bed turnaround. Clears waiting rooms quickly but severely delays complex, multi-resource critical interventions.",
+      tag: "Maximum Census Throughput",
+      desc: "Prioritizes cases with the fastest turnaround times. Clears waiting capacity quickly but risks delaying intensive critical cases.",
     },
     BALANCED_HYBRID: {
       name: "Strategy D: Balanced Clinical & Throughput",
       tag: "Balanced Optimization",
-      desc: "Combines 50% clinical urgency weight with 50% turnover velocity and waiting aging. Optimizes overall hospital bed flow during sustained high census.",
+      desc: "Combines 50% clinical urgency weight with 50% turnover velocity and waiting aging. Best for high patient volume surges.",
     },
   };
 
   return (
     <div className="space-y-6 pb-12">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E2E8F0] pb-4">
         <div>
-          <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-            <GitCompare className="w-5 h-5 text-indigo-400" />
-            <span>Allocation Strategy Comparative Engine</span>
-          </h2>
-          <p className="text-xs text-slate-400">
-            Simulate and contrast operational outcomes across 4 distinct allocation heuristics using live census data.
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-bold text-[#243447] tracking-tight font-heading">
+              Allocation Strategy Comparative Engine
+            </h1>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-[#EAF4FF] text-[#1976D2]">
+              Algorithmic Policy
+            </span>
+          </div>
+          <p className="text-xs text-[#64748B] mt-0.5">
+            Simulate and contrast clinical outcomes across 4 distinct allocation heuristics using live census data.
           </p>
         </div>
 
         <button
-          id="run-strategy-simulation-btn"
           onClick={handleRunComparison}
           disabled={isRunning}
-          className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md flex items-center gap-2 transition disabled:opacity-50"
+          className="px-4 py-2 rounded-lg bg-[#1976D2] hover:bg-[#1565C0] text-white text-xs font-semibold shadow-xs flex items-center gap-2 transition disabled:opacity-50"
         >
-          <TrendingUp className="w-4 h-4" />
-          <span>{isRunning ? "Simulating Trade-offs..." : "Run Heuristic Comparison"}</span>
+          <GitCompare className="w-4 h-4" />
+          <span>{isRunning ? "Simulating Algorithms..." : "Run Heuristics Simulation"}</span>
         </button>
       </div>
 
       {appliedMsg && (
-        <div className="p-3 rounded-xl bg-emerald-950/50 border border-emerald-800 text-emerald-200 text-xs flex items-center justify-between">
+        <div className="p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>{appliedMsg}</span>
           </div>
-          <button onClick={() => setAppliedMsg(null)} className="text-xs text-emerald-300">
+          <button
+            onClick={() => setAppliedMsg(null)}
+            className="text-xs font-semibold text-emerald-800 hover:underline"
+          >
             Dismiss
           </button>
         </div>
       )}
 
-      {/* 4 Strategy Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {(
-          [
-            "PRIORITY_FIRST",
-            "FIRST_COME_FIRST_SERVED",
-            "SHORTEST_TREATMENT_FIRST",
-            "BALANCED_HYBRID",
-          ] as AllocationStrategy[]
-        ).map((stratKey) => {
-          const info = strategyDescriptions[stratKey];
-          const isCurrentActive = activeStrategy === stratKey;
-          const simData = comparisonResults?.find((r) => r.strategy === stratKey);
+      {/* 4 Strategy Policy Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {(Object.keys(strategyDescriptions) as AllocationStrategy[]).map((key) => {
+          const item = strategyDescriptions[key];
+          const isCurrentlyActive = activeStrategy === key;
 
           return (
             <div
-              key={stratKey}
-              className={`p-5 rounded-xl border transition flex flex-col justify-between space-y-4 ${
-                isCurrentActive
-                  ? "bg-slate-900 border-indigo-600 shadow-md shadow-indigo-950/40"
-                  : "bg-slate-900 border-slate-800 hover:border-slate-700"
+              key={key}
+              className={`medical-card p-5 flex flex-col justify-between space-y-4 transition ${
+                isCurrentlyActive ? "border-[#1976D2] ring-1 ring-[#1976D2] bg-[#F7FAFC]" : ""
               }`}
             >
               <div>
                 <div className="flex items-start justify-between">
                   <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-indigo-950 border border-indigo-800 text-indigo-300">
-                      {info.tag}
-                    </span>
-                    <h3 className="text-sm font-bold text-white mt-1.5">{info.name}</h3>
+                    <h2 className="text-sm font-bold text-[#243447]">{item.name}</h2>
+                    <span className="text-[11px] font-semibold text-[#1976D2]">{item.tag}</span>
                   </div>
-
-                  {isCurrentActive && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-950 border border-emerald-800 text-emerald-300 flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" />
-                      <span>Active</span>
+                  {isCurrentlyActive && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#1976D2] text-white">
+                      ACTIVE POLICY
                     </span>
                   )}
                 </div>
 
-                <p className="text-xs text-slate-300 mt-2 leading-relaxed">{info.desc}</p>
-
-                {simData && (
-                  <div className="mt-4 p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                      Live Simulation Metrics
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                      <div className="p-1.5 rounded bg-slate-900 border border-slate-850">
-                        <div className="text-[10px] text-slate-400">Survival Index</div>
-                        <div className="mt-0.5 font-bold font-mono text-emerald-400">
-                          {simData.criticalSurvivalRate}%
-                        </div>
-                      </div>
-
-                      <div className="p-1.5 rounded bg-slate-900 border border-slate-850">
-                        <div className="text-[10px] text-slate-400">Avg Wait</div>
-                        <div className="mt-0.5 font-bold font-mono text-white">
-                          {simData.avgWaitMinutes} min
-                        </div>
-                      </div>
-
-                      <div className="p-1.5 rounded bg-slate-900 border border-slate-850">
-                        <div className="text-[10px] text-slate-400">12h Turnover</div>
-                        <div className="mt-0.5 font-bold font-mono text-indigo-300">
-                          {simData.throughput12h} pts
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="text-[11px] text-slate-400 mt-1 leading-normal italic">
-                      Trade-off: {simData.tradeoffSummary}
-                    </div>
-                  </div>
-                )}
+                <p className="text-xs text-[#64748B] leading-relaxed mt-2.5">{item.desc}</p>
               </div>
 
-              <div className="pt-3 border-t border-slate-850 flex items-center justify-between">
-                <span className="text-[11px] text-slate-400">
-                  {isCurrentActive ? "Active hospital engine" : "Alternative model"}
+              <div className="pt-3 border-t border-[#E2E8F0] flex items-center justify-between">
+                <span className="text-[11px] text-[#64748B]">
+                  {isCurrentlyActive ? "Enforcing live allocations" : "Available to activate"}
                 </span>
 
-                {!isCurrentActive ? (
+                {!isCurrentlyActive && (
                   <button
-                    onClick={() => handleApplyStrategy(stratKey)}
-                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition"
+                    onClick={() => handleApplyStrategy(key)}
+                    className="px-3 py-1.5 rounded-lg bg-white border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#243447] text-xs font-semibold transition"
                   >
-                    Activate Strategy
+                    Apply Strategy
                   </button>
-                ) : (
-                  <span className="text-xs font-bold text-emerald-400 font-mono">ENFORCED</span>
                 )}
               </div>
             </div>
           );
         })}
       </div>
+
+      {/* Simulation Comparative Results */}
+      {comparisonResults && (
+        <div className="medical-card p-5 space-y-4">
+          <div className="border-b border-[#E2E8F0] pb-3 flex items-center justify-between">
+            <h2 className="text-sm font-bold text-[#243447]">Simulation Comparative Results</h2>
+            <span className="text-xs text-[#64748B]">Benchmarked across live patient queue</span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="bg-[#F8FAFC] text-[#64748B] text-[11px] uppercase font-semibold border-b border-[#E2E8F0]">
+                  <th className="px-4 py-2.5">Strategy Model</th>
+                  <th className="px-4 py-2.5">Avg Waiting Time</th>
+                  <th className="px-4 py-2.5">Critical Allocations</th>
+                  <th className="px-4 py-2.5">Total Throughput</th>
+                  <th className="px-4 py-2.5">Fairness Index</th>
+                  <th className="px-4 py-2.5 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#E2E8F0]">
+                {comparisonResults.map((r, i) => (
+                  <tr key={i} className="hover:bg-[#F8FAFC] transition">
+                    <td className="px-4 py-3 font-semibold text-[#243447]">{r.strategy}</td>
+                    <td className="px-4 py-3 font-mono">{r.avgWaitMinutes} min</td>
+                    <td className="px-4 py-3 font-mono font-bold text-[#DC2626]">
+                      {r.criticalAllocated}
+                    </td>
+                    <td className="px-4 py-3 font-mono">{r.totalAllocated} patients</td>
+                    <td className="px-4 py-3 font-mono text-[#0F9D8A]">
+                      {Math.round(r.fairnessScore * 100)}%
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {activeStrategy === r.strategy ? (
+                        <span className="text-[11px] font-bold text-[#1976D2]">Active</span>
+                      ) : (
+                        <button
+                          onClick={() => handleApplyStrategy(r.strategy)}
+                          className="text-xs font-semibold text-[#1976D2] hover:underline"
+                        >
+                          Switch
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
